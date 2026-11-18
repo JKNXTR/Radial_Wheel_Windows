@@ -5,7 +5,7 @@ Demo link -> https://sites.google.com/view/radial-wheel-demo/home
 Written in Python with PySide6. It runs quietly from the system tray, starts with Windows and installs without a console window or administrator rights.
 
 [Bulgarian README](README_bg.md) · Version 1.2.0 · UI available in 20 languages (English by default)
-
+If you like my idea and want to support me a coffee will be amazing so i can keep stay later at night ;) -> https://buymeacoffee.com/nextarbgm
 ## Features
 
 - **8-sector wheel** at the cursor, clamped to the screen edges. Sectors, clockwise from 12 o'clock: Keyboard, Folders, Windows commands, Favorites, Sound, Internet, Settings, Programs (order is configurable).
