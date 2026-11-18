@@ -1,0 +1,3 @@
+-r requirements.txt
+Pillow>=10      # само за tools/gen_assets.py (генериране на app.ico)
+pyinstaller>=6  # само за build_exe.bat

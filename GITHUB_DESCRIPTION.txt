@@ -1,0 +1,1 @@
+Radial Wheel – a Windows radial quick-access menu. Press a global hotkey and an 8-sector wheel appears at your cursor: keyboard shortcuts, folders, programs, favorites, audio devices, web search and system commands. Python/PySide6 tray app with autostart, GUI installer, ZIP updates and 20 languages.
