@@ -1,5 +1,6 @@
 """Стартиране/спиране на основното приложение и на лекия слушател на клавиша (когато колелото е затворено)."""
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -51,3 +52,49 @@ def stop_listener() -> bool:
     k32.CloseHandle(h)
     time.sleep(0.35)                                   # изчакваме UnregisterHotKey
     return True
+
+
+def _our_markers() -> list:
+    """Низове, по които разпознаваме процесите на този инструмент (команден ред / изпълним файл)."""
+    if getattr(sys, "frozen", False):
+        return [os.path.normcase(sys.executable)]
+    return [os.path.normcase(str(Path(__file__).resolve().parent.parent / "main.py"))]
+
+
+def kill_stale(min_age: float = 8.0, wait: float = 1.5) -> int:
+    """Затваря стари/увиснали процеси на инструмента (основни и слушатели), без текущия процес, родителите и децата му.
+    Процеси по-млади от `min_age` секунди не се пипат (може да са нормален паралелен старт). Връща брой затворени."""
+    try:
+        import psutil
+    except Exception:
+        log.warning("psutil липсва – проверката за стари екземпляри е пропусната")
+        return 0
+    me = psutil.Process()
+    protected = {me.pid} | {p.pid for p in me.parents()} | {p.pid for p in me.children(recursive=True)}
+    markers = _our_markers()
+    victims = []
+    for p in psutil.process_iter(["pid", "cmdline", "create_time"]):
+        try:
+            if p.info["pid"] in protected:
+                continue
+            cmd = [os.path.normcase(a) for a in (p.info["cmdline"] or [])]
+            if not any(m in a for m in markers for a in cmd):
+                continue
+            if time.time() - (p.info["create_time"] or 0) < min_age:
+                continue
+            victims.append(p)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    for p in victims:
+        try:
+            log.warning("Затварям стар екземпляр pid=%s: %s", p.pid, " ".join(p.cmdline())[:200])
+            p.terminate()
+        except Exception:
+            log.exception("terminate неуспешно за %s", p.pid)
+    gone, alive = psutil.wait_procs(victims, timeout=wait)
+    for p in alive:
+        try:
+            p.kill()
+        except Exception:
+            log.exception("kill неуспешно за %s", p.pid)
+    return len(victims)

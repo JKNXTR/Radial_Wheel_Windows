@@ -22,10 +22,8 @@ from radialwheel.overlay import Overlay                         # noqa: E402
 from radialwheel.wheel import CENTER                            # noqa: E402
 
 
-audio.get_volume = lambda: 75                                   # демо стойности за снимките
-audio.get_mute = lambda: False
-audio.list_outputs = lambda: ([("a", "Слушалки (headphones)"), ("b", "Говорители (speakers)"),
-                               ("c", "Speakers (Realtek)"), ("d", "Headphones (Bluetooth)")], "a")
+audio.snapshot = lambda: {"vol": 75, "muted": False, "ready": True, "default": "a", "devices": [
+    ("a", "Слушалки (headphones)"), ("b", "Говорители (speakers)"), ("c", "Speakers (Realtek)"), ("d", "Headphones (Bluetooth)")]}   # демо стойности
 
 
 class FakeController:

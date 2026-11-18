@@ -232,7 +232,7 @@ def main():
     sent = []
     actions.winapi.send_combo = lambda c: sent.append(c)
     ov.hide(); ov.popup()
-    ov.wheel.centerClicked.emit()
+    ov.wheel.centerHeld.emit()
     import time as _t
     for _ in range(10):
         app.processEvents(); _t.sleep(0.03)
@@ -276,6 +276,194 @@ def main():
         check(f"език {code}: tr работи", tr("sector.keyboard") not in ("", "sector.keyboard"))
     set_language("en")
 
+    # 7g. център: кратък клик = Backspace, задържане = Delete с пръстен
+    from PySide6.QtCore import QEvent, QPointF as _P, Qt as _Qt
+    from PySide6.QtGui import QMouseEvent
+    import time as _t2
+    sent2 = []
+    actions.winapi.send_combo = lambda c: sent2.append(c)
+
+    def mouse(kind, pos):
+        return QMouseEvent(kind, pos, pos, _Qt.LeftButton, _Qt.LeftButton if kind == QEvent.MouseButtonPress else _Qt.NoButton, _Qt.NoModifier)
+    ov.hide(); ov.popup(); wh = ov.wheel
+    cpos = wh.c
+    wh.mousePressEvent(mouse(QEvent.MouseButtonPress, cpos))
+    wh.mouseReleaseEvent(mouse(QEvent.MouseButtonRelease, cpos))
+    for _ in range(10):
+        app.processEvents(); _t2.sleep(0.03)
+    check("кратък клик върху центъра праща Backspace", sent2 == ["Backspace"], str(sent2))
+    sent2.clear(); ov.hide(); ov.popup(); wh = ov.wheel
+    wh.mousePressEvent(mouse(QEvent.MouseButtonPress, wh.c))
+    _t2.sleep(0.5)
+    app.processEvents()
+    check("пръстенът се пълни при задържане", 0.2 < wh._hold < 0.9, str(wh._hold))
+    wh.mouseReleaseEvent(mouse(QEvent.MouseButtonRelease, wh.c))
+    check("ранно пускане нулира пръстена", wh._hold == 0)
+    for _ in range(10):
+        app.processEvents(); _t2.sleep(0.03)          # изчакваме Backspace от ранното пускане
+    sent2.clear(); ov.hide(); ov.popup(); wh = ov.wheel
+    wh.mousePressEvent(mouse(QEvent.MouseButtonPress, wh.c))
+    t0 = _t2.time()
+    while _t2.time() - t0 < 1.6 and not sent2:
+        app.processEvents(); _t2.sleep(0.02)
+    for _ in range(10):
+        app.processEvents(); _t2.sleep(0.03)
+    check("задържане ~1 s праща Delete", sent2 == ["Delete"], str(sent2))
+    wh.mouseReleaseEvent(mouse(QEvent.MouseButtonRelease, wh.c))
+    check("след Delete пускането не праща Backspace", sent2 == ["Delete"], str(sent2))
+
+    # 7h. звукът не блокира GUI нишката; кеш; отдалечени пътища; watchdog
+    import time as _t3
+    from radialwheel import audio as _au, icons as _ic
+    calls = []
+    _au.get_volume = lambda: calls.append("vol") or 50
+    _au.list_outputs = lambda: calls.append("list") or ([], None)
+    t0 = _t3.perf_counter()
+    BUILDERS["sound"](ov.ctx, *ov.dims["sound"]).show()
+    check("панелът за звук се изгражда без COM заявки", not calls and _t3.perf_counter() - t0 < 0.5, str(calls))
+    check("UNC пътят се разпознава като отдалечен", _ic._is_remote("\\\\server\\share\\a.exe"))
+    check("локален път не е отдалечен", not _ic._is_remote("/tmp/a.png"))
+    from radialwheel import watchdog
+    check("watchdog модул се зарежда", hasattr(watchdog, "start"))
+
+    # 7i. стари/увиснали екземпляри се затварят
+    import subprocess as _sp, sys as _sys
+    from radialwheel import lifecycle as _lc
+    main_py = str(Path(__file__).resolve().parent.parent / "app" / "main.py")
+    import psutil as _ps
+    spawn = ("import subprocess,sys;p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)',sys.argv[1],'--listener'],start_new_session=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,stdin=subprocess.DEVNULL);print(p.pid)")
+    pid = int(_sp.check_output([_sys.executable, "-c", spawn, main_py]).strip())      # сирак: не е наш наследник
+    _t3.sleep(0.4)
+    check("млад процес (паралелен старт) не се пипа", _lc.kill_stale(min_age=30.0) == 0 and _ps.pid_exists(pid))
+    n = _lc.kill_stale(min_age=0.0, wait=2.0)
+    _t3.sleep(0.3)
+    check("kill_stale затваря увисналия процес", n >= 1 and not (_ps.pid_exists(pid) and _ps.Process(pid).status() != "zombie"), str(n))
+
+    # 7n. увеличение на избрания сектор
+    cfg.reset(); cfg["behavior"]["hover_delay_ms"] = 0
+    ov.rebuild()
+    zl = ov.zoom_layer
+    def _spin(sec):
+        t0 = _t3.time()
+        while _t3.time() - t0 < sec:
+            app.processEvents(); _t3.sleep(0.01)
+    ov.wheel.active = 3; ov.wheel.changed.emit(); _spin(0.7)
+    check("избран сектор се увеличава плавно до ×2 (z≈1)", zl.z[3] > 0.99 and max(zl.z[i] for i in range(8) if i != 3) == 0.0, str(zl.z))
+    ov.wheel.active = 5; ov.wheel.changed.emit(); _spin(0.12)
+    check("при смяна: предишният се свива, новият расте (междинно състояние)", 0.0 < zl.z[3] < 1.0 and 0.0 < zl.z[5] < 1.0, str(zl.z))
+    _spin(0.7)
+    check("предишният сектор се връща в оригинал (z=0), новият ×2", zl.z[3] == 0.0 and zl.z[5] > 0.99)
+    ov.wheel.center_hot = True; ov.wheel.changed.emit(); _spin(0.7)
+    check("център (Delete) не увеличава сектор", max(zl.z) == 0.0)
+    ov.wheel.center_hot = False; ov.wheel.active = -1
+    pm = ov.grab()
+    check("overlay се рисува със слоя без грешки", not pm.isNull())
+
+    # 7o. настройки „Анимация“, плавно червено на центъра, затъмняване, отдалечаване
+    from radialwheel import settings_dialog as _sd
+    check("страница „Анимация“ е в менюто", "animation" in _sd.PAGES)
+    cfg["animation"].update(push_on=True, push=10, dim_on=True, dim=50)
+    cfg["animation"]["zoom"]["sound"] = 1.5
+    ov.rebuild(); zl = ov.zoom_layer; w_ = ov.wheel
+    ov.wheel.active = 4; ov.wheel.changed.emit(); _spin(0.8)    # позиция 4 = в реда по подразбиране 'sound'
+    sid4 = cfg["sector_order"][4]
+    check("затъмняване: останалите сектори са по-прозрачни", abs(zl.dim - 1.0) < 0.01 and abs(w_._sector_opacity(1, zl, 0.5) - 0.5) < 0.01 and w_._sector_opacity(4, zl, 0.5) == 1.0)
+    check("отдалечаване (push) и размер по сектор са в конфигурацията", cfg["animation"]["push_on"] and cfg["animation"]["zoom"]["sound"] == 1.5)
+    ov.grab()
+    w_.active = -1; w_.center_hot = True; w_.changed.emit(); w_._kick_center(); _spin(0.12)
+    check("център: червеното нараства плавно (междинно)", 0.0 < w_._ct < 0.95, f"{w_._ct}")
+    _spin(0.8)
+    check("център: напълно червен след прехода", w_._ct > 0.99)
+    w_._hold = 1.0; w_._holding = True; w_._kick_center(); _spin(0.6)
+    check("център: при задържане по-ярко/по-голямо (hb→1)", w_._hb > 0.95, f"{w_._hb}")
+    ov.grab()
+    w_._holding = False; w_._hold = 0.0; w_.center_hot = False; _spin(0.8)
+    check("център: плавно връщане към сиво", w_._ct < 0.01 and w_._hb < 0.01, f"{w_._ct} {w_._hb}")
+    w_._hold = 0.0; w_._lt = 0.0; w_.center_hot = True; w_._kick_center(); _spin(0.5)
+    check("център: първоначален надпис е Backspace (lt=0)", w_._lt < 0.01)
+    w_._hold = 1.0; w_._holding = True; w_._kick_center(); _spin(0.6)
+    check("център: при задържане надписът се сменя към Delete (lt→1)", w_._lt > 0.95, f"{w_._lt}")
+    ov.grab()
+    w_._holding = False; w_._hold = 0.0; w_.center_hot = False; _spin(0.6)
+    cfg["appearance"]["animations"] = False
+    w_.center_hot = True; w_._kick_center(); _spin(0.1)
+    check("анимации изключени: центърът е мигновено червен", w_._ct == 1.0)
+    cfg["appearance"]["animations"] = True
+    cfg.reset(); cfg["behavior"]["hover_delay_ms"] = 0
+
+    # 7m. надзорник: срив -> рестарт, код 0 -> край
+    import types, tempfile, textwrap
+    from radialwheel import supervisor as _sv
+    _sv.RESTART_DELAY = 0.3
+    tdir = tempfile.mkdtemp()
+    cnt = os.path.join(tdir, "n")
+    fake = os.path.join(tdir, "fake.py")
+    open(fake, "w").write(textwrap.dedent(f"""
+        import sys
+        p = r'{cnt}'
+        n = int(open(p).read()) if __import__('os').path.exists(p) else 0
+        open(p, 'w').write(str(n + 1))
+        sys.exit(1 if n < 2 else 0)
+    """))
+    _old_argv = sys.argv[0]
+    sys.argv[0] = fake
+    rc = _sv.run(types.SimpleNamespace(autostart=False, show=False))
+    sys.argv[0] = _old_argv
+    check("надзорник: 2 срива -> 3 старта, после нормален изход", rc == 0 and open(cnt).read() == "3", open(cnt).read())
+
+    # 7l. COM никога не се зарежда в GUI нишката
+    _au.available()
+    check("audio.available() не импортира comtypes/pycaw", "comtypes" not in sys.modules and "pycaw" not in sys.modules)
+
+    # 7k. ресурси
+    from radialwheel import resources as _res
+    check("resources.check работи и връща MB", _res.check() >= 0)
+    _res.trim()
+
+    # 7j. Интернет панел, миграция на браузърите, разгъваща се клавиатура
+    from radialwheel.config import Config as _Cfg
+    c2 = _Cfg.__new__(_Cfg)
+    c2.data = {k: v for k, v in __import__("copy").deepcopy(cfg.data).items()}
+    c2.data["browsers"] = [{"id": i, "path": ""} for i in ("chrome", "firefox", "edge", "opera")]
+    c2._sanitize()
+    check("стари 4 браузъра -> Chrome и Edge", [b["id"] for b in c2.data["browsers"]] == ["chrome", "edge"])
+    cfg["sites"] = [{"id": "custom", "url": f"https://s{i}.example", "label": f"S{i}", "icon": "", "bg": "#80FF0000"} for i in range(9)]
+    cfg["grid"]["internet"].update(mode="per_row", value=4)
+    ov.rebuild()
+    wi = BUILDERS["internet"](ov.ctx, *ov.dims["internet"]); wi.show()
+    from radialwheel.widgets import Tile as _T
+    check("Интернет: 2 браузъра + папка + 9 сайта плочки", len(wi.findChildren(_T)) == 2 + 1 + 9, str(len(wi.findChildren(_T))))
+    check("Интернет: цветът на сайта се прилага", any(t.bg == "#80FF0000" for t in wi.findChildren(_T)))
+    cfg.reset(); cfg["behavior"]["hover_delay_ms"] = 0
+    ov.rebuild()
+    from radialwheel.kbpanel import OskKey
+    wk, hk = ov.dims["keyboard"]
+    kb = BUILDERS["keyboard"](ov.ctx, wk, hk); kb.show()
+    check("клавиатура: височината е над два компактни панела", hk > 2 * kb.Hc, f"{hk} vs {kb.Hc}")
+    import radialwheel.kbpanel as _kbm
+    _kbm.QCursor = type("QC", (), {"pos": staticmethod(lambda: kb.mapToGlobal(kb.rect().center()))})
+    kb.eventFilter(kb.frames[1], QEvent(QEvent.Enter))
+    t0 = _t3.time()
+    while _t3.time() - t0 < 0.8:
+        app.processEvents(); _t3.sleep(0.01)
+    check("посочване разгъва панела (t=1)", kb.cur == 1 and kb.t > 0.99, f"{kb.cur} {kb.t}")
+    keys = kb.findChildren(OskKey)
+    check("компактна клавиатура: 61 клавиша", len(keys) == 61, str(len(keys)))
+    kk = [k for k in keys if k.vk == 0x41][0]
+    check("клавишите са приблизително квадратни", abs(kk.width() - kk.height()) <= 4, f"{kk.width()}x{kk.height()}")
+    sentk = []
+    actions.winapi.send_keys = lambda v: sentk.append(list(v))
+    kk.on_click(kk)
+    sh = [k for k in keys if k.vk == 0xA0][0]
+    sh.on_click(sh)
+    kk.on_click(kk)
+    check("клавиш A и Shift+A (залепващ Shift)", sentk == [[0x41], [0xA0, 0x41]], str(sentk))
+    kb.collapse()
+    t0 = _t3.time()
+    while _t3.time() - t0 < 0.8:
+        app.processEvents(); _t3.sleep(0.01)
+    check("свиване връща компактния вид", kb.cur == -1 and kb.t == 0.0)
+
     # 7d. обновяване от zip
     import tempfile, zipfile, shutil as _sh
     from radialwheel import updater, __version__
@@ -317,7 +505,7 @@ def main():
     for i in range(len(PAGES)):
         dlg.open_page(i)
         app.processEvents()
-    check("диалогът за настройки има всички страници", dlg.stack.count() == len(PAGES) == 15)
+    check("диалогът за настройки има всички страници", dlg.stack.count() == len(PAGES) == 16)
     # редакция на папка и програма през диалога
     from PySide6.QtWidgets import QLineEdit, QScrollArea
     dlg.open_page("folders")

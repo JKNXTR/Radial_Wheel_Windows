@@ -1,5 +1,7 @@
 """Зареждане/рендериране на икони (SVG, PNG, ICO, системни икони на файлове)."""
 import os
+import sys
+import time
 from functools import lru_cache
 
 from PySide6.QtCore import QByteArray, QFileInfo, QSize, Qt
@@ -11,6 +13,39 @@ from .paths import ICONS
 
 IMAGE_EXT = {".png", ".svg", ".ico", ".jpg", ".jpeg", ".bmp", ".webp"}
 _provider = None
+_mt_cache = {}
+_remote_cache = {}
+
+
+def _is_remote(path: str) -> bool:
+    """Мрежов път/устройство: достъпът до тях може да блокира секунди, затова не ги засягаме от GUI нишката."""
+    if path.startswith("\\\\"):
+        return True
+    if sys.platform != "win32" or len(path) < 2 or path[1] != ":":
+        return False
+    drive = path[:2].upper()
+    if drive not in _remote_cache:
+        try:
+            import ctypes
+            _remote_cache[drive] = ctypes.windll.kernel32.GetDriveTypeW(drive + "\\") == 4     # DRIVE_REMOTE
+        except Exception:
+            _remote_cache[drive] = False
+    return _remote_cache[drive]
+
+
+def _mtime(real: str) -> float:
+    if real.startswith(str(ICONS)) or _is_remote(real):
+        return 0.0
+    now = time.monotonic()
+    ent = _mt_cache.get(real)
+    if ent and now - ent[1] < 30:
+        return ent[0]
+    try:
+        mt = os.path.getmtime(real)
+    except OSError:
+        mt = 0.0
+    _mt_cache[real] = (mt, now)
+    return mt
 
 
 def builtin(name: str) -> str:
@@ -52,6 +87,9 @@ def _cached(src: str, px: int, dpr: float, mtime: float) -> QPixmap:
     # системна икона на файл/папка/програма
     if _provider is None:
         _provider = QFileIconProvider()
+    if _is_remote(src):                          # общ тип икона, без достъп до мрежовия ресурс
+        kind = QFileIconProvider.File if os.path.splitext(src)[1] else QFileIconProvider.Folder
+        return _provider.icon(kind).pixmap(QSize(px, px), dpr)
     icon = _provider.icon(QFileInfo(os.path.expandvars(src)))
     return icon.pixmap(QSize(px, px), dpr)
 
@@ -61,11 +99,7 @@ def pixmap(src: str, px: int, dpr: float = 1.0) -> QPixmap:
     if not src:
         return QPixmap()
     real = os.path.expandvars(src)
-    try:
-        mt = os.path.getmtime(real)
-    except OSError:
-        mt = 0.0
-    return _cached(real, int(px), float(dpr), mt)
+    return _cached(real, int(px), float(dpr), _mtime(real))
 
 
 def clear_cache():

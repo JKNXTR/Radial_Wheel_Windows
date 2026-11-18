@@ -32,17 +32,19 @@ def pipe_name() -> str:
     return f"{APP_NAME}-{os.environ.get('USERNAME') or os.environ.get('USER') or 'user'}"
 
 
-def notify_running_instance(message: bytes = b"show") -> bool:
-    """Ако вече има работещ екземпляр – праща му команда и връща True."""
+def notify_running_instance(message: bytes = b"show") -> str:
+    """Праща команда на вече работещ екземпляр. Връща "ok" (отговори), "hung" (връзката е приета, но няма
+    отговор – екземплярът е увиснал) или "" (няма екземпляр)."""
     sock = QLocalSocket()
     sock.connectToServer(pipe_name())
-    if sock.waitForConnected(300):
-        sock.write(message)
-        sock.flush()
-        sock.waitForBytesWritten(300)
-        sock.disconnectFromServer()
-        return True
-    return False
+    if not sock.waitForConnected(300):
+        return ""
+    sock.write(message)
+    sock.flush()
+    sock.waitForBytesWritten(300)
+    answered = sock.waitForReadyRead(2000) and bytes(sock.readAll()).startswith(b"ok")
+    sock.disconnectFromServer()
+    return "ok" if answered else "hung"
 
 
 class Controller(QObject):
@@ -55,6 +57,10 @@ class Controller(QObject):
         app.setQuitOnLastWindowClosed(False)
         app.setWindowIcon(QIcon(str(ASSETS / "app.ico")))
 
+        from . import watchdog
+        watchdog.start(self)
+        from . import resources
+        resources.start(self)
         self.overlay = Overlay(self)
         self.settings = None
         lifecycle.stop_listener()                       # ако клавишът е държан от слушателя – поемаме го
@@ -130,8 +136,9 @@ class Controller(QObject):
         except Exception:
             log.exception("Грешка при показване на колелото")
 
-    def apply_config(self):
-        icons.clear_cache()
+    def apply_config(self, clear_icons=True):
+        if clear_icons:
+            icons.clear_cache()
         self.overlay.close_menu(False)
         self.overlay.rebuild()
 
@@ -161,6 +168,8 @@ class Controller(QObject):
 
         def read():
             data = bytes(conn.readAll())
+            conn.write(b"ok")                    # потвърждение: екземплярът е жив
+            conn.flush()
             conn.disconnectFromServer()
             if data.startswith(b"show"):
                 QTimer.singleShot(100, self.show_wheel)

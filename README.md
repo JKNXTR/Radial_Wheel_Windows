@@ -1,14 +1,11 @@
 # Radial Wheel
-<div align="center">
-  <img src="images/logo.png" alt="Radial_Wheel_Windows" width="600">
-</div>
-Demo link -> https://sites.google.com/view/radial-wheel-demo/home
+
 **A radial quick-access menu for Windows.** Press a global hotkey and an 8-sector wheel opens around your cursor. Hover a sector to open a panel above it with keyboard shortcuts, folders, programs, favorites, Windows commands, sound controls, web search and settings.
 
 Written in Python with PySide6. It runs quietly from the system tray, starts with Windows and installs without a console window or administrator rights.
 
 [Bulgarian README](README_bg.md) · Version 1.2.0 · UI available in 20 languages (English by default)
-If you like my idea and want to support me a coffee will be amazing so i can keep stay later at night ;) -> https://buymeacoffee.com/nextarbgm
+
 ## Features
 
 - **8-sector wheel** at the cursor, clamped to the screen edges. Sectors, clockwise from 12 o'clock: Keyboard, Folders, Windows commands, Favorites, Sound, Internet, Settings, Programs (order is configurable).
@@ -20,7 +17,7 @@ If you like my idea and want to support me a coffee will be amazing so i can kee
   - *Internet:* browser picker, Google search, saved sites.
 - **Flexible layout:** one row, a fixed number of tiles per row, or a fixed number of rows. Set tile width and height, icon size, text size, panel width and an overall panel scale, with a live preview.
 - **Tile colors:** a color picker with transparency, for a whole panel or for a single slot.
-- **Center Delete button:** turns red when you move the cursor onto it and sends a real Delete key press to the window you were using.
+- **Center button:** turns red when you move the cursor onto it. A short click sends Backspace; holding it for about a second fills a bright red ring and then sends Delete, both to the window you were using.
 - **Tray icon** with a menu: open the wheel, settings, autostart, settings folder, log, **Close** (the hotkey starts it again) and **Exit completely**.
 - **Update from a ZIP:** choose or drop an archive in Settings → Update, confirm, and the app replaces its files and restarts. The previous version is kept as a backup.
 - **Themes, opacity, scale, custom sector icons, sounds** and 15 settings pages in total.
@@ -56,7 +53,7 @@ The default hotkey is **Ctrl+Alt+Space**. You can change it in Settings → Hotk
 | **X** on a panel, or click outside it | Closes only the panel. |
 | Second click outside the wheel | Hides everything. |
 | Press the hotkey again | Toggles the wheel off immediately. |
-| Center **Delete** button / **Esc** | Delete sends the Delete key to the previous window. Esc hides the wheel. |
+| Center button / **Esc** | A short click sends **Backspace** to the previous window. Hold it for about a second: a red ring fills clockwise from 12 o'clock and, when complete, **Delete** is sent. Esc hides the wheel. |
 | Click a tile or key | The action runs, the wheel hides and focus returns to the previous window. |
 | Right-click a tile | Choose a file, folder or URL for that slot, restore the default, or remove the slot. |
 | Drop a file onto a tile | Sets the slot (.exe, .lnk, file or folder). |
@@ -137,3 +134,17 @@ python tools/render_states.py  # screenshots of every state
 - Switching the audio output uses the undocumented but widely used `IPolicyConfig` COM interface.
 - Sleep uses `SetSuspendState(0,0,0)`. If hibernation is enabled, some systems prefer hibernation over sleep.
 - Non-Bulgarian, non-English translations cover the wheel, panels and tray. Longer Settings texts fall back to English, and the translations have not been reviewed by native speakers.
+
+## Troubleshooting freezes
+
+The app watches its own user interface. If it stops responding for more than 2.5 seconds, the full stack of every thread is written to `%APPDATA%\RadialWheel\radialwheel.log` (look for "Интерфейсът не отговаря"). Slow panels (over 120 ms) are logged as warnings. Audio access runs in a background thread and network paths are never touched from the UI thread, so neither can freeze the wheel. If a freeze still happens, send that log section.
+
+## What's new in 1.3.0
+- Resource safety: software rendering (no GPU dependence), above-normal CPU priority, RAM watchdog that trims caches above ~220 MB.
+- On start, stale/frozen older instances are detected and closed automatically.
+- Keyboard sector: hovering one of the three panels smoothly expands it to full size (the others fade out). The middle panel becomes a compact on-screen keyboard in the current layout language with square keys and sticky modifiers.
+- Internet panel: only Chrome and Edge by default; saved sites can be added, removed, recolored, given custom icons, and arranged in a chosen number of rows/columns (Settings → Internet).
+- Self-healing (1.3.4): a lightweight supervisor restarts the tool ~5 s after a crash, error or forced close (including a UI freeze longer than 10 s) and closes all older instances first. "Exit" from the tray stops it for good. Use `--no-supervisor` for debugging.
+- Sector zoom (1.3.5): the selected sector smoothly grows 2x; the previous one returns to its original size and position.
+- Animation settings (1.4.0): new Settings → Animation page (master switch, speed, zoom per sector, push away from center, fade other sectors, smooth red glow of the Delete center button that gets brighter and slightly larger while held).
+- Center button (1.4.1): shows Backspace first; while holding, the label cross-fades to Delete (localized).

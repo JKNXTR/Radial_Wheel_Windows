@@ -315,7 +315,8 @@ def draw_glyph(p: QPainter, rect: QRectF, token: str, color: QColor):
 
 GLYPH_TOKENS = {"left", "right", "up", "down", "shift", "enter", "backspace", "win", "menu", "voldown", "volup"}
 TEXT_FOR = {"ctrl": "Ctrl", "alt": "Alt", "esc": "Esc", "fn": "Fn", "altgr": "AltGr", "space": "", "tab": "Tab",
-            "delete": "Del", "plus": "+", "minus": "–"}
+            "delete": "Del", "plus": "+", "minus": "–", "mute": "Mute", "home": "Home", "end": "End",
+            "prtsc": "PrtSc", "caps": "Caps"}
 
 
 def draw_keycap(p: QPainter, rect: QRectF, token: str, theme, s: float, hover=False, down=False):

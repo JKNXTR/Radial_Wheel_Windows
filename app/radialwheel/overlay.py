@@ -11,8 +11,9 @@ from PySide6.QtWidgets import QWidget
 
 from . import icons, winapi
 from .actions import Actions
+from . import audio
 from .config import SECTOR_IDS, cfg
-from .layout import GRID_PANELS, grid_params, panel_count
+from .layout import GRID_PANELS, grid_params, internet_geom, kbd_dims, panel_count
 from .paths import SOUNDS
 from .panels import BUILDERS, Ctx
 from .widgets import Frame
@@ -100,15 +101,28 @@ class Overlay(QWidget):
             if sid in GRID_PANELS:
                 gp = grid_params(sid, panel_count(sid), ps)
                 dims[sid] = (gp["W"], gp["H"])
-            else:                                               # клавиатура / интернет / звук – фиксирани панели
-                dims[sid] = (round(BASE_D * PANEL_RATIO * ps) + 2 * sh, round(PANEL_H * ps) + 2 * sh)
+            else:                                               # клавиатура / интернет / звук – специални панели
+                base = (round(BASE_D * PANEL_RATIO * ps) + 2 * sh, round(PANEL_H * ps) + 2 * sh)
+                if sid == "internet":
+                    g = internet_geom(ps, *base)
+                    dims[sid] = (g["W"], g["H"])
+                elif sid == "keyboard":
+                    k = kbd_dims(ps, base[0])
+                    dims[sid] = (k["W"], k["H"])
+                else:
+                    dims[sid] = base
         m = dict(s=s, ps=ps, D=round(BASE_D * s), dims=dims, zone_w=max(w for w, _ in dims.values()),
                  zone_h=max(h for _, h in dims.values()), gap=round(30 * s), margin=round(6 * s))
         m["pad"] = max(10, int(m["D"] * 0.05))
         wheel = m["D"] + 2 * m["pad"]
         m["W"] = m["zone_w"] + 2 * m["margin"]
         m["wy"] = m["margin"] + m["zone_h"] + m["gap"] - m["pad"]
-        m["H"] = m["wy"] + wheel + m["margin"]
+        an = cfg["animation"]
+        zmax = max(an["zoom"].values()) if an["zoom_on"] else 1.0
+        push = an["push"] / 100.0 if an["push_on"] else 0.0
+        grow = int(m["D"] * (0.17 * (zmax - 1.0) + 0.5 * push + 0.02))        # място за увеличения сектор около колелото
+        m["H"] = m["wy"] + wheel + m["margin"] + grow
+        m["W"] = max(m["W"], wheel + 2 * grow)
         m["wx"] = (m["W"] - wheel) // 2
         return m
 
@@ -133,6 +147,9 @@ class Overlay(QWidget):
         self.zone_w, self.zone_h = m["zone_w"], m["zone_h"]
         if self.wheel:
             self.wheel.deleteLater()
+        if getattr(self, "zoom_layer", None):
+            self.zoom_layer.deleteLater()
+            self.zoom_layer = None
         sector_icons = []
         for sid in cfg["sector_order"]:
             custom = cfg["custom_icons"].get(sid, "")
@@ -143,16 +160,23 @@ class Overlay(QWidget):
         self.wheel.hover_delay = cfg["behavior"]["hover_delay_ms"]
         self.wheel.hovered.connect(self._on_hovered)
         self.wheel.sectorClicked.connect(self._on_sector_clicked)
-        self.wheel.centerClicked.connect(self.press_delete)
+        self.wheel.centerClicked.connect(self.press_backspace)
+        self.wheel.centerHeld.connect(self.press_delete)
         self.wheel.rightClicked.connect(self.outside_click)
         self.wheel.outsideClicked.connect(self.outside_click)
         self.setFixedSize(m["W"], m["H"])
         self.zone.setGeometry(m["margin"], m["margin"], self.zone_w, self.zone_h)
         self.wheel.move(m["wx"], m["wy"])
         self.wheel.show()
+        from .zoomlayer import ZoomLayer
+        self.zoom_layer = ZoomLayer(self.wheel, self)
         self._wheel_center = QPoint(m["wx"] + self.wheel.width() // 2, m["wy"] + self.wheel.height() // 2)
         self.ctx = Ctx(self.theme, m["ps"], self.act, self)
         self._clear_panel()
+
+    def press_backspace(self):
+        """Кратък клик върху центъра = клавиш Backspace към предишния прозорец."""
+        self.act.keys("Backspace")
 
     def press_delete(self):
         """Централният бутон Delete работи като клавиша Delete: скрива колелото и го праща към предишния прозорец."""
@@ -183,6 +207,7 @@ class Overlay(QWidget):
             self.setWindowOpacity(0.0)
         else:
             self.setWindowOpacity(op)
+        audio.refresh_async()                          # предварително зареждане на звука (във фонова нишка)
         self.catcher.setGeometry(screen.geometry())
         self.catcher.show()
         self.show()
@@ -225,14 +250,18 @@ class Overlay(QWidget):
         if sid == self.panel_sid and self.panel is not None:
             return
         self._clear_panel()
+        t0 = time.perf_counter()
         try:
             pw, ph = self.dims[sid]
             w = BUILDERS[sid](self.ctx, pw, ph)
         except Exception:
             log.exception("Грешка при изграждане на панел %s", sid)
             return
+        dt = (time.perf_counter() - t0) * 1000
+        if dt > 120:
+            log.warning("Бавно изграждане на панел %s: %.0f ms", sid, dt)
         w.setParent(self.zone)
-        w.move((self.zone_w - w.width()) // 2, 0)
+        w.move((self.zone_w - w.width()) // 2, self.zone_h - w.height())
         w.show()
         self.panel, self.panel_sid = w, sid
         frames = ([w] if isinstance(w, Frame) else []) + w.findChildren(Frame)

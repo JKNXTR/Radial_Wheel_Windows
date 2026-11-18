@@ -22,6 +22,15 @@ DEFAULTS = {
         "theme": "dark",               # dark | light | custom
         "accent": "#6897E8",
     },
+    "animation": {
+        "zoom_on": True,
+        "zoom": {s: 2.0 for s in ("keyboard", "folders", "system", "favorites", "sound", "internet", "settings", "programs")},
+        "push_on": False, "push": 8,           # % от радиуса: отдалечаване на избрания сектор от центъра
+        "dim_on": False, "dim": 35,            # % намаляване на прозрачността на останалите сектори
+        "speed": 100,                          # % (50 = бавно, 200 = бързо)
+        "center_glow": True,                   # плавно червено светене на централния бутон
+        "center_boost": True,                   # при задържане – по-ярко червено и леко увеличение
+    },
     "behavior": {
         "open_mode": "hover",          # hover | click
         "hover_delay_ms": 80,
@@ -45,18 +54,19 @@ DEFAULTS = {
     # path == "" -> вградено поведение по подразбиране
     "programs": [{"id": i, "path": ""} for i in
                  ("browser", "editor", "player", "calculator", "graphics", "mail", "games", "notes")],
-    "browsers": [{"id": i, "path": ""} for i in ("chrome", "firefox", "edge", "opera")],
+    "browsers": [{"id": i, "path": "", "label": ""} for i in ("chrome", "edge")],
+    # сайтове: id = вграден (favorites|news|mail|social) или custom; icon = собствена икона; bg = цвят #AARRGGBB
     "sites": [
-        {"id": "favorites", "url": "https://www.google.com"},
-        {"id": "news", "url": "https://news.google.com"},
-        {"id": "mail", "url": "https://mail.google.com"},
-        {"id": "social", "url": "https://www.facebook.com"},
+        {"id": "favorites", "url": "https://www.google.com", "label": "", "icon": "", "bg": ""},
+        {"id": "news", "url": "https://news.google.com", "label": "", "icon": "", "bg": ""},
+        {"id": "mail", "url": "https://mail.google.com", "label": "", "icon": "", "bg": ""},
+        {"id": "social", "url": "https://www.facebook.com", "label": "", "icon": "", "bg": ""},
     ],
     "bookmarks_folder": "%USERPROFILE%\\Favorites",
     "favorites": [{"id": "custom", "path": "", "label": ""} for _ in range(8)],
     # решетка на плочките: mode = single | per_row | rows ; 0 при размерите = автоматично
     "grid": {sid: {"mode": "single", "value": 4, "tile_w": 0, "tile_h": 0, "icon": 0, "font": 0, "panel_w": 0, "bg": ""}
-             for sid in ("folders", "programs", "favorites", "system", "settings")},
+             for sid in ("folders", "programs", "favorites", "system", "settings", "internet")},
     "quick_shortcuts": [
         [{"keys": "Shift+Win+S", "tip": "Screenshot"}, {"keys": "Ctrl+C", "tip": "Copy"}, {"keys": "Ctrl+V", "tip": "Paste"}],
         [{"keys": "Alt+Left", "tip": "Back"}, {"keys": "Alt+Right", "tip": "Forward"},
@@ -120,6 +130,15 @@ class Config:
         order = self.data.get("sector_order", [])
         if sorted(order) != sorted(SECTOR_IDS):
             self.data["sector_order"] = list(SECTOR_IDS)
+        an = self.data["animation"]
+        for k in list(an["zoom"]):
+            try:
+                an["zoom"][k] = min(2.5, max(1.0, float(an["zoom"][k])))
+            except Exception:
+                an["zoom"][k] = 2.0
+        an["push"] = min(20, max(0, int(an["push"])))
+        an["dim"] = min(80, max(10, int(an["dim"])))
+        an["speed"] = min(200, max(50, int(an["speed"])))
         a = self.data["appearance"]
         a["opacity"] = min(1.0, max(0.3, float(a["opacity"])))
         a["scale"] = min(2.0, max(0.6, float(a["scale"])))
@@ -129,6 +148,21 @@ class Config:
             for e in self.data[key]:
                 e.setdefault("id", "custom")
                 e.setdefault("path", "")
+        # браузъри: вече са по подразбиране два (Chrome, Edge); Firefox/Opera без собствен път се махат от стари конфигурации
+        br = [e for e in self.data["browsers"] if isinstance(e, dict)][:8]
+        br = [e for e in br if not (e.get("id") in ("firefox", "opera") and not e.get("path"))]
+        for e in br:
+            e.setdefault("id", "custom")
+            e.setdefault("path", "")
+            e.setdefault("label", "")
+        self.data["browsers"] = br or copy.deepcopy(DEFAULTS["browsers"])
+        sites = [e for e in self.data["sites"] if isinstance(e, dict)][:40]
+        for e in sites:
+            e.setdefault("id", "custom")
+            e.setdefault("url", "")
+            for k in ("label", "icon", "bg"):
+                e.setdefault(k, "")
+        self.data["sites"] = sites
         for g in self.data["grid"].values():
             g["value"] = max(1, int(g["value"]))
             for k in ("tile_w", "tile_h", "icon", "font", "panel_w"):

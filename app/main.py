@@ -30,9 +30,15 @@ def main():
     parser.add_argument("--autostart", action="store_true", help="стартиране с Windows (тихо)")
     parser.add_argument("--listener", action="store_true", help="лек слушател на клавиша (колелото е затворено)")
     parser.add_argument("--show", action="store_true", help="покажи колелото веднага")
+    parser.add_argument("--child", action="store_true", help="вътрешен: работи под надзор на supervisor")
+    parser.add_argument("--no-supervisor", action="store_true", help="без автоматичен рестарт (за отстраняване на грешки)")
     args = parser.parse_args()
     setup_logging()
     log = logging.getLogger("main")
+
+    if not args.listener and not args.child and not args.no_supervisor:
+        from radialwheel import supervisor
+        return supervisor.run(args)
 
     if args.listener:                      # без Qt – стартира се мигновено и струва почти нищо
         from radialwheel.listener import run
@@ -42,14 +48,23 @@ def main():
     from radialwheel import APP_NAME, __version__
     from radialwheel.app import Controller, notify_running_instance
 
+    sys.coinit_flags = 2                      # ако comtypes бъде зареден случайно в GUI нишката – да е STA като Qt
+    from radialwheel import resources
+    resources.prepare_environment()
     app = QApplication(sys.argv[:1])
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(__version__)
 
     # единствен екземпляр: втори старт само показва колелото в първия
-    if notify_running_instance(b"hide" if args.autostart else b"show"):
+    state = notify_running_instance(b"hide" if args.autostart else b"show")
+    if state == "ok":
         log.info("Вече работи друг екземпляр – изход.")
         return 0
+    # няма жив екземпляр: затваряме стари/увиснали процеси (и слушатели), преди да стартираме нов
+    from radialwheel import lifecycle
+    killed = lifecycle.kill_stale()
+    if killed:
+        log.warning("Затворени стари екземпляри: %d (състояние при проверката: %s)", killed, state or "няма връзка")
     try:
         ctrl = Controller(app, show_now=args.show)
         log.info("Стартирано (v%s, Python %s)", __version__, sys.version.split()[0])

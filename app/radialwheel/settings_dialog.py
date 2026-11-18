@@ -38,11 +38,11 @@ QSlider::sub-page:horizontal { background:#8FA8D8; border-radius:3px; }
 QSlider::handle:horizontal { background:#E4E4E4; border:1px solid #333; width:14px; margin:-6px 0; border-radius:4px; }
 """
 
-PAGES = ["view", "layout", "icons", "folders", "programs", "shortcuts", "favorites", "internet", "grids",
+PAGES = ["view", "animation", "layout", "icons", "folders", "programs", "shortcuts", "favorites", "internet", "grids",
          "functions", "themes", "hotkeys", "sounds", "update", "reset"]
-NAV_ICON = {"folders": "sector_folders", "programs": "sector_programs", "shortcuts": "sector_keyboard",
+NAV_ICON = {"animation": "set_view", "folders": "sector_folders", "programs": "sector_programs", "shortcuts": "sector_keyboard",
             "favorites": "sector_favorites", "internet": "sector_internet", "grids": "set_layout"}
-SCROLL_PAGES = {"folders", "programs", "shortcuts", "favorites", "internet", "grids"}
+SCROLL_PAGES = {"animation", "folders", "programs", "shortcuts", "favorites", "internet", "grids"}
 KEYS = (["Space", "Tab", "Insert", "Home", "End", "`"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)]
         + [str(i) for i in range(10)] + [f"F{i}" for i in range(1, 13)])
 
@@ -254,6 +254,59 @@ class SettingsDialog(QDialog):
         form.addRow(tr("view.opacity"), r1)
         form.addRow(tr("view.scale"), r2)
         form.addRow("", an)
+        lay.addLayout(form)
+        lay.addStretch(1)
+        return w
+
+    # ------------------------------------------------------------ Анимация
+    def page_animation(self):
+        w, lay = self._page(tr("set.animation"), tr("anim.hint"))
+        an = cfg["animation"]
+        form = QFormLayout()
+
+        def check(text, getter, setter, relayout=False):
+            cb = QCheckBox(text)
+            cb.setChecked(bool(getter()))
+            cb.toggled.connect(lambda v: (setter(bool(v)), self.commit(relayout)))
+            return cb
+
+        def slider(lo, hi, value, fmt, setter, relayout=False):
+            """Плъзгач с жива стойност; конфигурацията се прилага веднага, а прозорецът се преизгражда при пускане."""
+            sl = QSlider(Qt.Horizontal)
+            sl.setRange(lo, hi)
+            sl.setValue(value)
+            lb = QLabel(fmt(value))
+            lb.setMinimumWidth(48)
+
+            def moved(v):
+                lb.setText(fmt(v))
+                setter(v)
+                if not sl.isSliderDown():
+                    self.commit(relayout)
+            sl.valueChanged.connect(moved)
+            sl.sliderReleased.connect(lambda: self.commit(relayout))
+            row = QHBoxLayout()
+            row.addWidget(sl, 1)
+            row.addWidget(lb)
+            return row
+
+        form.addRow("", check(tr("anim.enable"), lambda: cfg["appearance"]["animations"],
+                              lambda v: cfg["appearance"].__setitem__("animations", v)))
+        form.addRow(tr("anim.speed"), slider(50, 200, an["speed"], lambda v: f"{v} %",
+                                             lambda v: an.__setitem__("speed", v)))
+        form.addRow("", check(tr("anim.zoom_on"), lambda: an["zoom_on"], lambda v: an.__setitem__("zoom_on", v), True))
+        for sid in cfg["sector_order"]:
+            form.addRow("    " + tr("sector." + sid),
+                        slider(10, 25, int(round(an["zoom"].get(sid, 2.0) * 10)), lambda v: f"×{v / 10:.1f}",
+                               lambda v, sid=sid: an["zoom"].__setitem__(sid, v / 10.0), True))
+        form.addRow("", check(tr("anim.push_on"), lambda: an["push_on"], lambda v: an.__setitem__("push_on", v), True))
+        form.addRow("    " + tr("anim.push_amount"), slider(0, 20, an["push"], lambda v: f"{v} %",
+                                                           lambda v: an.__setitem__("push", v), True))
+        form.addRow("", check(tr("anim.dim_on"), lambda: an["dim_on"], lambda v: an.__setitem__("dim_on", v)))
+        form.addRow("    " + tr("anim.dim_amount"), slider(10, 80, an["dim"], lambda v: f"{v} %",
+                                                          lambda v: an.__setitem__("dim", v)))
+        form.addRow("", check(tr("anim.center_glow"), lambda: an["center_glow"], lambda v: an.__setitem__("center_glow", v)))
+        form.addRow("", check(tr("anim.center_boost"), lambda: an["center_boost"], lambda v: an.__setitem__("center_boost", v)))
         lay.addLayout(form)
         lay.addStretch(1)
         return w
@@ -531,11 +584,13 @@ class SettingsDialog(QDialog):
             cfg[key].append({"id": "custom", "path": "", "label": ""})
             cfg.save()
             self.rebuild_pages()
+            self.c.apply_config(False)
 
         def reset_list():
             cfg[key] = copy.deepcopy(DEFAULTS[key])
             cfg.save()
             self.rebuild_pages()
+            self.c.apply_config(False)
         add.clicked.connect(add_slot)
         rst.clicked.connect(reset_list)
         top.addWidget(add)
@@ -586,6 +641,7 @@ class SettingsDialog(QDialog):
                         path.setText(os.path.normpath(p))
                         save()
                         self.rebuild_pages()
+                        self.c.apply_config(False)
                 b.clicked.connect(browse)
                 grid.addWidget(b, r, col)
                 col += 1
@@ -599,6 +655,7 @@ class SettingsDialog(QDialog):
                     lst[r], lst[r + delta] = lst[r + delta], lst[r]
                     cfg.save()
                     self.rebuild_pages()
+                    self.c.apply_config(False)
                 b.clicked.connect(move)
                 grid.addWidget(b, r, col)
                 col += 1
@@ -610,6 +667,7 @@ class SettingsDialog(QDialog):
                 del cfg[key][r]
                 cfg.save()
                 self.rebuild_pages()
+                self.c.apply_config(False)
             x.clicked.connect(remove)
             grid.addWidget(x, r, col)
         lay.addLayout(grid)
@@ -724,19 +782,184 @@ class SettingsDialog(QDialog):
         return w
 
     def page_internet(self):
-        w, lay = self._page(tr("set.internet"))
+        w, lay = self._page(tr("set.internet"), tr("internet.hint"))
+
+        def relayout():
+            cfg.save()
+            self.rebuild_pages()
+            self.c.apply_config(False)
+
+        # ---- браузъри
         lay.addWidget(QLabel(f"<b>{tr('page.browsers')}</b>"))
-        rows = [{"icon": icons.builtin("br_" + e["id"]), "label": tr("browser." + e["id"]), "value": e["path"],
-                 "kinds": ("file",), "default": "", "set": lambda v, e=e: e.__setitem__("path", v)}
-                for e in cfg["browsers"]]
-        self._rows(lay, rows)
-        lay.addSpacing(8)
+        top = QHBoxLayout()
+        ab = QPushButton("＋  " + tr("browser.add"))
+        rb = QPushButton(tr("browser.reset"))
+
+        def add_browser():
+            cfg["browsers"].append({"id": "custom", "path": "", "label": ""})
+            relayout()
+
+        def reset_browsers():
+            cfg["browsers"] = copy.deepcopy(DEFAULTS["browsers"])
+            relayout()
+        ab.clicked.connect(add_browser)
+        rb.clicked.connect(reset_browsers)
+        top.addWidget(ab)
+        top.addWidget(rb)
+        top.addStretch(1)
+        lay.addLayout(top)
+        g = QGridLayout()
+        g.setColumnStretch(2, 1)
+        g.setColumnStretch(3, 3)
+        for r, e in enumerate(cfg["browsers"]):
+            known = e["id"] in ("chrome", "firefox", "edge", "opera")
+            pic = QLabel()
+            pic.setFixedSize(30, 30)
+            pic.setPixmap(icons.pixmap(icons.builtin("br_" + e["id"]) if known else icons.builtin("sector_internet"), 26))
+            name = QLineEdit(e.get("label", ""))
+            name.setPlaceholderText(tr("browser." + e["id"]) if known else tr("slot.name"))
+            path = QLineEdit(e.get("path", ""))
+            path.setPlaceholderText("(" + tr("icons.default").lower() + ")" if known else "")
+
+            def save_b(_=None, e=e, name=name, path=path):
+                e["label"] = name.text().strip()
+                v = path.text().strip()
+                e["path"] = os.path.normpath(v) if v else ""
+                cfg.save()
+            name.editingFinished.connect(save_b)
+            path.editingFinished.connect(save_b)
+            bf = QPushButton(tr("btn.file"))
+
+            def browse_b(_=False, path=path, save_b=save_b):
+                p, _f = QFileDialog.getOpenFileName(self, tr("dlg.choose_program"), os.path.expandvars(path.text()))
+                if p:
+                    path.setText(os.path.normpath(p))
+                    save_b()
+                    relayout()
+            bf.clicked.connect(browse_b)
+            xb = QPushButton("✕")
+            xb.setFixedWidth(34)
+            xb.setEnabled(len(cfg["browsers"]) > 1)
+
+            def del_b(_=False, r=r):
+                del cfg["browsers"][r]
+                relayout()
+            xb.clicked.connect(del_b)
+            for c_, wd in enumerate((pic, QLabel(f"{r + 1}"), name, path, bf, xb)):
+                g.addWidget(wd, r, c_)
+        lay.addLayout(g)
+        lay.addSpacing(10)
+
+        # ---- запазени сайтове
         lay.addWidget(QLabel(f"<b>{tr('page.sites')}</b>"))
-        rows = [{"icon": icons.builtin("site_" + e["id"]), "label": tr("site." + e["id"]), "value": e["url"],
-                 "default": DEFAULTS["sites"][i]["url"], "set": lambda v, e=e: v and e.__setitem__("url", v)}
-                for i, e in enumerate(cfg["sites"])]
-        self._rows(lay, rows)
-        lay.addSpacing(8)
+        top = QHBoxLayout()
+        asb = QPushButton("＋  " + tr("site.add"))
+        rs = QPushButton(tr("slot.reset_list"))
+
+        def add_site():
+            cfg["sites"].append({"id": "custom", "url": "https://", "label": "", "icon": "", "bg": ""})
+            relayout()
+
+        def reset_sites():
+            cfg["sites"] = copy.deepcopy(DEFAULTS["sites"])
+            relayout()
+        asb.clicked.connect(add_site)
+        rs.clicked.connect(reset_sites)
+        top.addWidget(asb)
+        top.addWidget(rs)
+        top.addStretch(1)
+        lay.addLayout(top)
+        g = QGridLayout()
+        g.setColumnStretch(2, 1)
+        g.setColumnStretch(3, 2)
+        g.setHorizontalSpacing(6)
+        g.setVerticalSpacing(5)
+        for r, e in enumerate(cfg["sites"]):
+            known = e["id"] in ("favorites", "news", "mail", "social")
+            icon = e.get("icon") or (icons.builtin("site_" + e["id"]) if known else icons.builtin("site_favorites"))
+            pic = QLabel()
+            pic.setFixedSize(30, 30)
+            pic.setPixmap(icons.pixmap(icon, 26))
+            name = QLineEdit(e.get("label", ""))
+            name.setPlaceholderText(tr("site." + e["id"]) if known else tr("slot.name"))
+            url = QLineEdit(e.get("url", ""))
+
+            def save_s(_=None, e=e, name=name, url=url):
+                e["label"] = name.text().strip()
+                e["url"] = url.text().strip()
+                cfg.save()
+            name.editingFinished.connect(save_s)
+            url.editingFinished.connect(save_s)
+            colb = self._color_button(lambda e=e: e.get("bg", ""), lambda v, e=e: (e.__setitem__("bg", v), cfg.save()))
+            ib = QPushButton(tr("icons.choose"))
+
+            def pick_icon(_=False, e=e):
+                p, _f = QFileDialog.getOpenFileName(self, tr("icons.choose"), "", "Images (*.png *.svg *.ico *.jpg *.webp)")
+                if p:
+                    e["icon"] = os.path.normpath(p)
+                    relayout()
+            ib.clicked.connect(pick_icon)
+            ic = QPushButton("⟲")
+            ic.setFixedWidth(30)
+            ic.setToolTip(tr("icons.default"))
+            ic.setEnabled(bool(e.get("icon")))
+
+            def clear_icon(_=False, e=e):
+                e["icon"] = ""
+                relayout()
+            ic.clicked.connect(clear_icon)
+            widgets = [pic, QLabel(f"{r + 1}"), name, url, colb, ib, ic]
+            for txt, delta in (("▲", -1), ("▼", 1)):
+                b = QPushButton(txt)
+                b.setFixedWidth(34)
+                b.setEnabled(0 <= r + delta < len(cfg["sites"]))
+
+                def move(_=False, r=r, delta=delta):
+                    lst = cfg["sites"]
+                    lst[r], lst[r + delta] = lst[r + delta], lst[r]
+                    relayout()
+                b.clicked.connect(move)
+                widgets.append(b)
+            x = QPushButton("✕")
+            x.setFixedWidth(34)
+
+            def del_s(_=False, r=r):
+                del cfg["sites"][r]
+                relayout()
+            x.clicked.connect(del_s)
+            widgets.append(x)
+            for c_, wd in enumerate(widgets):
+                g.addWidget(wd, r, c_)
+        lay.addLayout(g)
+
+        # ---- подредба и фон на плочките на сайтовете
+        gcfg = cfg["grid"]["internet"]
+        form = QFormLayout()
+        mode = QComboBox()
+        for code, key in (("single", "grid.single"), ("per_row", "grid.per_row"), ("rows", "grid.rows")):
+            mode.addItem(tr(key), code)
+        mode.setCurrentIndex(max(0, mode.findData(gcfg["mode"])))
+        val = QSpinBox()
+        val.setRange(1, 20)
+        val.setValue(int(gcfg["value"]))
+        val.setEnabled(gcfg["mode"] != "single")
+
+        def layout_changed(*_):
+            gcfg["mode"] = mode.currentData()
+            gcfg["value"] = val.value()
+            val.setEnabled(gcfg["mode"] != "single")
+            cfg.save()
+            self.c.apply_config(False)
+        mode.currentIndexChanged.connect(layout_changed)
+        val.valueChanged.connect(layout_changed)
+        form.addRow(tr("grid.mode"), mode)
+        form.addRow(tr("grid.value"), val)
+        form.addRow(tr("grid.bg"), self._color_button(lambda: gcfg.get("bg", ""),
+                                                       lambda v: (gcfg.__setitem__("bg", v), cfg.save())))
+        lay.addLayout(form)
+
+        # ---- папка с отметки
+        lay.addSpacing(6)
         lay.addWidget(QLabel(f"<b>{tr('page.bookmarks')}</b>"))
         self._rows(lay, [{"icon": icons.builtin("site_folder"), "label": tr("site.folder"), "value": cfg["bookmarks_folder"],
                           "kinds": ("dir",), "default": DEFAULTS["bookmarks_folder"],

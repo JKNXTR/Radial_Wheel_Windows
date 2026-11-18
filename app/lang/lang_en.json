@@ -214,5 +214,22 @@
   "shortcuts.add_row": "＋ Row",
   "shortcuts.del_row": "− Row",
   "shortcuts.add_col": "＋ Column",
-  "shortcuts.del_col": "− Column"
+  "shortcuts.del_col": "− Column",
+  "internet.hint": "Browsers, saved sites (name, address, tile color, icon, order) and how the sites are arranged in the panel. Right-click a site tile in the panel to change its address or remove it.",
+  "browser.add": "Add browser",
+  "browser.reset": "Restore Chrome and Edge",
+  "browser.custom": "Browser",
+  "site.add": "Add site",
+  "set.animation": "Animation",
+  "anim.hint": "Animations of the wheel: zoom of the selected sector, movement, fading of the others and the glow of the center (Delete) button.",
+  "anim.enable": "Enable animations",
+  "anim.speed": "Animation speed",
+  "anim.zoom_on": "Enlarge the selected sector (zoom of each sector below)",
+  "anim.push_on": "Move the selected sector slightly away from the center (off = it keeps its position)",
+  "anim.push_amount": "Distance from the center",
+  "anim.dim_on": "Fade the other sectors while one is selected",
+  "anim.dim_amount": "Fade amount",
+  "anim.center_glow": "Center button: smooth red glow on hover",
+  "anim.center_boost": "Center button: brighter red and slight growth while holding",
+  "center.backspace": "Backspace"
 }

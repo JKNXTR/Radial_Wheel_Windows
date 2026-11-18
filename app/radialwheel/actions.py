@@ -95,6 +95,19 @@ class Actions:
         else:
             self._safe(lambda: winapi.send_combo(combo))
 
+    def type_keys(self, vks):
+        """Въвеждане от екранната клавиатура: праща клавиша към предишния прозорец, без да затваря колелото."""
+        ov = self.overlay
+        prev = getattr(ov, "_prev_hwnd", 0)
+
+        def send():
+            self._safe(lambda: winapi.send_keys(list(vks)))
+        if winapi.get_foreground() == int(ov.winId()) and prev:
+            winapi.restore_foreground(prev)            # фокусът се връща към прозореца, в който пишете
+            QTimer.singleShot(50, send)
+        else:
+            send()
+
     def osk(self):
         def run():
             if sys.platform == "win32":
@@ -141,8 +154,17 @@ class Actions:
     def launch_browser(self, idx: int):
         entry = cfg["browsers"][idx]
         bid = entry["id"]
-        targets = [entry["path"]] if entry["path"] else BROWSER_CANDIDATES[bid]
+        targets = [entry["path"]] if entry["path"] else BROWSER_CANDIDATES.get(bid, [])
+        if not targets:                              # собствен браузър без път -> избор на програма
+            self.choose_browser(idx)
+            return
         self.after_close(lambda: self._try_targets(targets, bid))
+
+    def choose_browser(self, idx: int):
+        p = self.pick_file(tr("dlg.choose_program"))
+        if p:
+            cfg["browsers"][idx]["path"] = os.path.normpath(p)
+            self._persist()
 
     def _try_targets(self, targets, name):
         last = None

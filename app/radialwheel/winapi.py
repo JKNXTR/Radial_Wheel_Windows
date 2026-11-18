@@ -11,7 +11,8 @@ VK = {
     "alt": 0xA4, "altgr": 0xA5, "esc": 0x1B, "escape": 0x1B, "space": 0x20, "pageup": 0x21, "pagedown": 0x22,
     "end": 0x23, "home": 0x24, "left": 0x25, "up": 0x26, "right": 0x27, "down": 0x28, "insert": 0x2D,
     "delete": 0x2E, "win": 0x5B, "apps": 0x5D, "menu": 0x5D, "voldown": 0xAE, "volup": 0xAF, "mute": 0xAD,
-    "plus": 0xBB, "minus": 0xBD, "comma": 0xBC, "period": 0xBE, "`": 0xC0,
+    "plus": 0xBB, "minus": 0xBD, "comma": 0xBC, "period": 0xBE, "`": 0xC0, "printscreen": 0x2C, "prtsc": 0x2C,
+    "capslock": 0x14, "caps": 0x14,
 }
 for _i in range(26):
     VK[chr(ord("a") + _i)] = ord("A") + _i
@@ -249,3 +250,48 @@ class MouseTrigger:
             user32.UnhookWindowsHookEx(self._hook)
         self._hook = None
         self._proc = None
+
+
+# ------------------------------------------------------------------ подредба (език) на клавиатурата
+# Етикетите на клавишите се вземат от АКТИВНАТА клавиатурна подредба на предишния прозорец (MapVirtualKeyEx /
+# ToUnicodeEx), затова работят за всеки език без собствени таблици (български, руски, немски, френски ...).
+_US = {0xC0: ("`", "~"), 0xBD: ("-", "_"), 0xBB: ("=", "+"), 0xDB: ("[", "{"), 0xDD: ("]", "}"), 0xDC: ("\\", "|"),
+       0xBA: (";", ":"), 0xDE: ("'", '"'), 0xBC: (",", "<"), 0xBE: (".", ">"), 0xBF: ("/", "?")}
+for _c, _sh in zip("1234567890", "!@#$%^&*()"):
+    _US[ord(_c)] = (_c, _sh)
+for _i in range(26):
+    _US[ord("A") + _i] = (chr(ord("A") + _i), chr(ord("A") + _i))
+LAYOUT_VKS = sorted(_US)
+
+
+def keyboard_labels(hwnd: int = 0):
+    """(код на езика, {vk: (без Shift, със Shift)}) за подредбата на прозореца `hwnd`. Извън Windows – US."""
+    if not IS_WIN:
+        return "EN", dict(_US)
+    try:
+        tid = user32.GetWindowThreadProcessId(hwnd, None) if hwnd else 0
+        hkl = user32.GetKeyboardLayout(tid)
+        langid = int(hkl) & 0xFFFF
+        buf = ctypes.create_unicode_buffer(16)
+        name = "EN"
+        if kernel32.GetLocaleInfoW(langid, 0x59, buf, 16):          # LOCALE_SISO639LANGNAME
+            name = buf.value.upper() or "EN"
+        user32.MapVirtualKeyExW.argtypes = (wintypes.UINT, wintypes.UINT, ctypes.c_void_p)
+        user32.ToUnicodeEx.argtypes = (wintypes.UINT, wintypes.UINT, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int,
+                                       wintypes.UINT, ctypes.c_void_p)
+        out = {}
+        for vk in LAYOUT_VKS:
+            sc = user32.MapVirtualKeyExW(vk, 0, hkl)
+            pair = []
+            for shift in (False, True):
+                state = (ctypes.c_ubyte * 256)()
+                if shift:
+                    state[0x10] = 0x80
+                n = user32.ToUnicodeEx(vk, sc, state, buf, 16, 4, hkl)      # флаг 4: не променя състоянието (мъртви клавиши)
+                ch = buf.value[:1] if n != 0 else ""
+                pair.append(ch if ch.isprintable() else "")
+            out[vk] = (pair[0] or _US[vk][0], pair[1] or _US[vk][1])
+        return name, out
+    except Exception:
+        log.exception("keyboard_labels неуспешно")
+        return "EN", dict(_US)

@@ -2,7 +2,9 @@
 import logging
 import os
 
-from PySide6.QtCore import QTimer, Qt
+import shiboken6
+
+from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtWidgets import (QComboBox, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QSlider,
                                QVBoxLayout, QWidget)
 
@@ -10,10 +12,27 @@ from . import actions as A
 from . import audio, icons
 from .config import cfg
 from .i18n import tr
-from .layout import grid_params
+from .kbpanel import build_keyboard
+from .layout import grid_params, internet_geom
 from .widgets import ComboButton, Frame, KeyCap, Tile, font
 
 log = logging.getLogger(__name__)
+
+
+class _AudioBridge(QObject):
+    """Предава резултатите от аудио нишката към GUI нишката (опашка от събития)."""
+    refreshed = Signal(dict)
+    switched = Signal(str, bool)
+
+
+_bridge = None
+
+
+def audio_bridge():
+    global _bridge
+    if _bridge is None:
+        _bridge = _AudioBridge()
+    return _bridge
 
 
 class Ctx:
@@ -47,94 +66,6 @@ def _custom_icon_or(path, fallback):
     return path if path else fallback
 
 
-# ====================================================================== Б: клавиатура
-def build_keyboard(ctx, W, H):
-    s, th = ctx.s, ctx.theme
-    holder = QWidget()
-    holder.setFixedSize(W, H)
-    gap = round(14 * s)
-    sh = round(6 * s)
-    vis = (W - 2 * sh - 2 * gap) / 3.0
-    widths = [round(vis * 1.25), round(vis * 0.72), round(vis * 1.03)]
-    x = 0
-    frames = []
-    for i, key in enumerate(("panel.quick_keys", "panel.std_keyboard", "panel.win_keys")):
-        f = Frame(th, s, tr(key), "global", holder)
-        f.setGeometry(x, 0, widths[i] + 2 * sh, H)
-        x += widths[i] + gap
-        frames.append(f)
-
-    # --- ляв: бързи команди (2 реда с keycaps и „+“)
-    left = frames[0]
-    box = QVBoxLayout()
-    box.setContentsMargins(0, 0, 0, 0)
-    box.setSpacing(round(4 * s))
-    cont = QWidget()
-    cont.setLayout(box)
-    avail = widths[0] - 2 * (round(8 * s) + 0) - round(4 * s)
-    for row in cfg["quick_shortcuts"]:
-        items = [(it, [k for k in it["keys"].replace(" ", "").split("+") if k]) for it in row]
-        need = sum(ComboButton.natural_width(tk, s) for _, tk in items) + round(5 * s) * (len(items) + 1)
-        f = min(1.0, avail / need) if need else 1.0          # свива клавишите, ако комбинациите не се събират
-        hl = QHBoxLayout()
-        hl.setContentsMargins(0, 0, 0, 0)
-        hl.setSpacing(round(4 * s))
-        hl.addStretch(1)
-        for item, tokens in items:
-            tip = tr("tip." + item.get("tip", ""))
-            if not item.get("tip") or tip == "tip." + item.get("tip", ""):
-                tip = item.get("tip") or item["keys"]
-            btn = ComboButton(th, s * f, tokens, tip)
-            btn.clicked.connect(lambda c=item["keys"]: ctx.act.keys(c))
-            hl.addWidget(btn)
-            hl.addStretch(1)
-        box.addLayout(hl, 1)
-    left.layout_.addWidget(cont, 1)
-
-    # --- среден: стандартна клавиатура (OSK)
-    mid = frames[1]
-    t = Tile(th, s, "", icons.builtin("kb_keyboard"), tr("tip.osk"), icon_ratio=0.9)
-    t.clicked.connect(ctx.act.osk)
-    mid.layout_.addStretch(1)
-    mid.layout_.addWidget(t, 3)
-    mid.layout_.addStretch(1)
-
-    # --- десен: Enter/Space/Backspace + функционални клавиши
-    right = frames[2]
-    col = QVBoxLayout()
-    col.setContentsMargins(0, 0, 0, 0)
-    col.setSpacing(round(6 * s))
-    cont2 = QWidget()
-    cont2.setLayout(col)
-
-    def key(tok, combo, tip, close=True, noop=False):
-        k = KeyCap(th, s, tok, tip)
-        if not noop:
-            k.clicked.connect(lambda: ctx.act.keys(combo, close=close))
-        return k
-
-    r1 = QHBoxLayout()
-    r1.setSpacing(round(8 * s))
-    r1.addWidget(key("enter", "Enter", tr("tip.enter")), 2)
-    r1.addWidget(key("space", "Space", tr("tip.space")), 6)
-    r1.addWidget(key("backspace", "Backspace", tr("tip.backspace")), 2)
-    r2 = QHBoxLayout()
-    r2.setSpacing(round(5 * s))
-    for tok, combo, tip, st, close, noop in (
-            ("win", "Win", tr("tip.win"), 14, True, False),
-            ("menu", "Apps", tr("tip.menu"), 12, True, False),
-            ("voldown", "VolDown", tr("tip.voldown"), 12, False, False),
-            ("volup", "VolUp", tr("tip.volup"), 12, False, False),
-            ("esc", "Esc", tr("tip.esc"), 13, True, False),
-            ("fn", "", tr("tip.fn"), 12, True, True),
-            ("altgr", "AltGr", tr("tip.altgr"), 14, True, False)):
-        r2.addWidget(key(tok, combo, tip, close, noop), st)
-    col.addLayout(r1, 1)
-    col.addLayout(r2, 1)
-    right.layout_.addWidget(cont2, 1)
-    return holder
-
-
 # ====================================================================== В/Г/З: слотове (папки, програми, любими)
 SLOT_KINDS = {"folders": ("folder.", "folder_"), "programs": ("app.", "app_"), "favorites": (None, None)}
 
@@ -149,7 +80,7 @@ def slot_visual(key, e):
             label = tr(lp + eid)
         elif path:
             name = os.path.basename(path.rstrip("\\/")) or path
-            label = os.path.splitext(name)[0] if os.path.isfile(os.path.expandvars(path)) else name
+            label = os.path.splitext(name)[0] if os.path.splitext(name)[1] else name      # без достъп до диска
         else:
             label = tr("fav.add")
     if builtin and (key == "folders" or not path):
@@ -242,12 +173,16 @@ def build_internet(ctx, W, H):
         lay.addWidget(f, stretch)
         return f
 
-    # --- браузъри
-    fb = sub(tr("sub.browsers"), 30)
+    # --- браузъри (вградена икона; системна икона само за зададен собствен път – и тя се кешира)
+    geo = internet_geom(s, W, H)
+    fb = sub(tr("sub.browsers"), 0)
+    fb.setFixedWidth(geo["bw"])
     for i, e in enumerate(cfg["browsers"]):
         bid = e["id"]
-        src = e["path"] or A.existing_browser_path(bid) or icons.builtin("br_" + bid)
-        t = Tile(th, s, tr("browser." + bid), src, e["path"] or "", icon_ratio=0.62)
+        known = bid in A.BROWSER_CANDIDATES
+        src = e["path"] if e["path"] else (icons.builtin("br_" + bid) if known else icons.builtin("sector_internet"))
+        label = e.get("label") or (tr("browser." + bid) if known else os.path.splitext(os.path.basename(e["path"]))[0] or tr("browser.custom"))
+        t = Tile(th, s, label, src, e["path"] or "", icon_ratio=0.62)
         t.clicked.connect(lambda i=i: ctx.act.launch_browser(i))
 
         def setp(i=i):
@@ -263,7 +198,8 @@ def build_internet(ctx, W, H):
         fb.layout_.addWidget(t, 1)
 
     # --- Google търсене
-    fg = sub(tr("sub.google"), 32)
+    fg = sub(tr("sub.google"), 0)
+    fg.setFixedWidth(geo["gw"])
     edit = QLineEdit()
     edit.setObjectName("searchEdit")
     edit.setClearButtonEnabled(False)
@@ -297,13 +233,21 @@ def build_internet(ctx, W, H):
     fg.layout_.addWidget(w, 1, Qt.AlignVCenter)
     ctx.overlay.focus_widget = edit if cfg["behavior"]["autofocus_search"] else None
 
-    # --- запазени сайтове
-    fs = sub(tr("sub.sites"), 38)
-    tf = Tile(th, s, "", icons.builtin("site_folder"), tr("site.folder"), icon_ratio=0.9)
+    # --- запазени сайтове: решетка (колони/редове от настройките), цвят и икона за всеки сайт
+    fs = sub(tr("sub.sites"), 1)
+    cont = QWidget()
+    grid = QGridLayout(cont)
+    grid.setContentsMargins(0, 0, 0, 0)
+    grid.setSpacing(round(5 * s))
+    panel_bg = cfg["grid"].get("internet", {}).get("bg", "")
+    tf = Tile(th, s, "", icons.builtin("site_folder"), tr("site.folder"), icon_ratio=0.9, bg=panel_bg)
     tf.clicked.connect(ctx.act.open_bookmarks_folder)
-    fs.layout_.addWidget(tf, 1)
+    grid.addWidget(tf, 0, 0)
     for i, e in enumerate(cfg["sites"]):
-        t = Tile(th, s, tr("site." + e["id"]), icons.builtin("site_" + e["id"]), e["url"], icon_ratio=0.6)
+        known = e["id"] in ("favorites", "news", "mail", "social")
+        label = e.get("label") or (tr("site." + e["id"]) if known else e["url"].split("//")[-1].split("/")[0])
+        icon = e.get("icon") or (icons.builtin("site_" + e["id"]) if known else icons.builtin("site_favorites"))
+        t = Tile(th, s, label, icon, e["url"], icon_ratio=0.6, bg=e.get("bg") or panel_bg)
         t.clicked.connect(lambda i=i: ctx.act.open_url(cfg["sites"][i]["url"]))
 
         def seturl(i=i):
@@ -311,8 +255,16 @@ def build_internet(ctx, W, H):
             if u:
                 cfg["sites"][i]["url"] = u
                 ctx.act._persist()
-        t.contextRequested.connect(lambda pos, a=seturl: ctx.act.context_menu(pos, on_url=a))
-        fs.layout_.addWidget(t, 1)
+
+        def remove(i=i):
+            del cfg["sites"][i]
+            ctx.act._persist()
+        t.contextRequested.connect(lambda pos, a=seturl, r=remove: ctx.act.context_menu(pos, on_url=a, on_remove=r))
+        n = i + 1
+        grid.addWidget(t, n // geo["cols"], n % geo["cols"])
+    for c in range(geo["cols"]):
+        grid.setColumnStretch(c, 1)
+    fs.layout_.addWidget(cont, 1)
     return main
 
 
@@ -323,8 +275,10 @@ def build_sound(ctx, W, H):
     main.setFixedSize(W, H)
     lay = main.layout_
     lay.setSpacing(round(8 * s))
-    vol = audio.get_volume()
-    muted = audio.get_mute() if vol >= 0 else False
+    snap = audio.snapshot()                    # последни известни стойности; без COM в GUI нишката
+    vol = snap["vol"]
+    muted = snap["muted"]
+    bridge = audio_bridge()
 
     # --- лява зона: сила на звука
     fl = Frame(th, s, tr("sub.volume"), "sub")
@@ -335,6 +289,7 @@ def build_sound(ctx, W, H):
     slider.setRange(0, 100)
     slider.setValue(max(0, vol))
     slider.setEnabled(vol >= 0)
+    state_vol = {"ok": vol >= 0}
     slider.setStyleSheet(
         f"QSlider::groove:horizontal{{height:{round(6 * s)}px;background:#5A6D94;border-radius:{round(3 * s)}px;}}"
         f"QSlider::sub-page:horizontal{{background:#8FA8D8;border-radius:{round(3 * s)}px;}}"
@@ -343,7 +298,7 @@ def build_sound(ctx, W, H):
         f"QSlider::handle:horizontal:hover{{background:#FFFFFF;}}")
     small = QLabel()
     small.setPixmap(icons.pixmap(icons.builtin("speaker_small"), round(22 * s), main.devicePixelRatioF()))
-    pct = QLabel(f"{vol}%" if vol >= 0 else "—")
+    pct = QLabel(f"{vol}%" if vol >= 0 else "…" if audio.available() else "—")
     pct.setFont(font(15 * s))
     pct.setStyleSheet(f"color:{th.text};")
     pct.setMinimumWidth(round(44 * s))
@@ -353,21 +308,21 @@ def build_sound(ctx, W, H):
     fl.layout_.addWidget(slider, 1, Qt.AlignVCenter)
     fl.layout_.addWidget(small, 0, Qt.AlignVCenter)
     fl.layout_.addWidget(pct, 0, Qt.AlignVCenter)
-    if vol < 0:
+    if vol < 0 and not audio.available():
         spk.setToolTip(tr("audio.unavailable"))
 
     def on_slide(v):
         pct.setText(f"{v}%")
-        audio.set_volume(v)
+        audio.set_volume_async(v)
     slider.valueChanged.connect(on_slide)
 
     state = {"muted": muted}
 
     def toggle():
-        if vol < 0:
+        if not state_vol["ok"]:
             return
         state["muted"] = not state["muted"]
-        audio.set_mute(state["muted"])
+        audio.set_mute_async(state["muted"])
         spk.set_icon(icons.builtin("speaker_muted" if state["muted"] else "speaker_big"))
     spk.clicked.connect(toggle)
 
@@ -385,26 +340,78 @@ def build_sound(ctx, W, H):
         f"QComboBox#wheelCombo::down-arrow{{image:url({arrow});width:{round(12 * s)}px;height:{round(12 * s)}px;}}"
         f"QComboBox#wheelCombo QAbstractItemView{{background:#1E1E1E;color:{th.text};border:1px solid #111;"
         f"selection-background-color:#33363F;selection-color:{th.text};outline:0;font-size:{round(15 * s)}px;}}")
-    devices, default_id = audio.list_outputs()
-    if devices:
-        for did, name in devices:
-            combo.addItem(name, did)
-        idx = next((i for i, (d, _) in enumerate(devices) if d == default_id), 0)
-        combo.setCurrentIndex(idx)
-        state["idx"] = idx
+    cstate = {"ids": None}
 
-        def on_pick(i):
-            if i == state.get("idx"):
-                return
-            if audio.set_default_output(combo.itemData(i)):
-                state["idx"] = i
-            else:
-                combo.setCurrentIndex(state.get("idx", 0))
-                ctx.act.c.notify(tr("app.title"), tr("audio.switch_failed"))
-        combo.activated.connect(on_pick)
-    else:
-        combo.addItem(tr("audio.no_devices") if audio.available() else tr("audio.unavailable"))
+    def fill(devices, default_id):
+        ids = [d for d, _ in devices]
+        if ids == cstate["ids"]:
+            idx = ids.index(default_id) if default_id in ids else 0
+            if ids and combo.currentIndex() != idx:
+                combo.blockSignals(True)
+                combo.setCurrentIndex(idx)
+                combo.blockSignals(False)
+            return
+        cstate["ids"] = ids
+        combo.blockSignals(True)
+        combo.clear()
+        if devices:
+            for did, name in devices:
+                combo.addItem(name, did)
+            idx = ids.index(default_id) if default_id in ids else 0
+            combo.setCurrentIndex(idx)
+            state["idx"] = idx
+            combo.setEnabled(True)
+        else:
+            combo.addItem(tr("audio.no_devices") if audio.available() else tr("audio.unavailable"))
+            combo.setEnabled(False)
+        combo.blockSignals(False)
+
+    def on_pick(i):
+        if i == state.get("idx") or combo.itemData(i) is None:
+            return
+        state["want"] = i
         combo.setEnabled(False)
+        audio.set_default_output_async(combo.itemData(i), lambda ok, did=combo.itemData(i): bridge.switched.emit(did, ok))
+    combo.activated.connect(on_pick)
+
+    def on_switched(did, ok):
+        if not shiboken6.isValid(combo):
+            return
+        combo.setEnabled(True)
+        if ok:
+            state["idx"] = state.get("want", state.get("idx", 0))
+        else:
+            combo.setCurrentIndex(state.get("idx", 0))
+            ctx.act.c.notify(tr("app.title"), tr("audio.switch_failed"))
+
+    def on_refreshed(snap):
+        if not shiboken6.isValid(main):
+            return
+        if snap["vol"] >= 0:
+            state_vol["ok"] = True
+            slider.blockSignals(True)
+            slider.setValue(snap["vol"])
+            slider.blockSignals(False)
+            slider.setEnabled(True)
+            pct.setText(f"{snap['vol']}%")
+            spk.setToolTip("")
+        state["muted"] = snap["muted"]
+        spk.set_icon(icons.builtin("speaker_muted" if snap["muted"] else "speaker_big"))
+        if not slider.isSliderDown():
+            fill(snap["devices"], snap["default"])
+
+    fill(snap["devices"], snap["default"])
+    bridge.refreshed.connect(on_refreshed)
+    bridge.switched.connect(on_switched)
+
+    def cleanup(*_):
+        for sig, fn in ((bridge.refreshed, on_refreshed), (bridge.switched, on_switched)):
+            try:
+                sig.disconnect(fn)
+            except Exception:
+                pass
+    main.destroyed.connect(cleanup)
+    audio.refresh_async(lambda sn: bridge.refreshed.emit(sn))
     fr.layout_.addStretch(1)
     fr.layout_.addWidget(combo, 6, Qt.AlignVCenter)
     fr.layout_.addStretch(1)
