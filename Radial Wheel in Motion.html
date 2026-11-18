@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radial Wheel in Motion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Direction: dark tool stage, the product's own graphite and blue; sidebar of chapters beside a scaled 800x520 desktop. */
+:root{
+  --bg:#15171b; --panel:#1e2127; --line:#2e333c; --text:#e8eaee; --muted:#9aa1ad;
+  --accent:#4a76c5; --accent-hi:#7ea3e6; --danger:#d9483b; --ok:#3fae6b;
+  --display:"Sora","Segoe UI",system-ui,sans-serif; --body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--body);font-size:15px;line-height:1.45}
+body{padding:20px 16px 40px}
+.wrap{max-width:1180px;margin:0 auto}
+header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+h1{font:700 22px/1.2 var(--display);margin:0;letter-spacing:-.01em}
+header span{color:var(--muted);font-size:13px}
+.layout{display:grid;grid-template-columns:250px 1fr;gap:18px;align-items:start}
+@media(max-width:860px){.layout{grid-template-columns:1fr}}
+nav ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+@media(max-width:860px){nav ol{flex-direction:row;overflow-x:auto;padding-bottom:6px}nav li button{white-space:nowrap}}
+nav li button{all:unset;box-sizing:border-box;width:100%;display:flex;gap:10px;align-items:center;padding:9px 11px;border-radius:8px;cursor:pointer;color:var(--muted);border:1px solid transparent}
+nav li button:hover{background:var(--panel);color:var(--text)}
+nav li button:focus-visible{outline:2px solid var(--accent-hi);outline-offset:1px}
+nav li.on button{background:var(--panel);color:var(--text);border-color:var(--line);box-shadow:inset 3px 0 0 var(--accent)}
+nav .n{font:500 12px var(--mono);color:var(--accent-hi);min-width:18px}
+nav .t{font-weight:500;font-size:14px}
+.stagewrap{position:relative;width:100%;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#0e1013}
+.stage{position:absolute;left:0;top:0;width:800px;height:520px;transform-origin:0 0;overflow:hidden;
+  background:radial-gradient(900px 500px at 30% 20%,#243247 0,#141a24 60%,#0d1118 100%)}
+.fakewin{position:absolute;left:70px;top:46px;width:430px;height:250px;border-radius:8px;background:#1c222c;border:1px solid #2c3544;opacity:.75}
+.fakewin i{display:block;height:8px;border-radius:4px;background:#2d3747;margin:14px 18px 0}
+.fakewin i:first-child{height:22px;margin:0;border-radius:8px 8px 0 0;background:#252e3c}
+.fakewin i:nth-child(3){width:60%}.fakewin i:nth-child(5){width:75%}.fakewin i:nth-child(7){width:45%}
+.taskbar{position:absolute;left:0;right:0;bottom:0;height:36px;background:rgba(10,12,16,.92);border-top:1px solid #222a35;z-index:30;display:flex;align-items:center;justify-content:space-between;padding:0 12px;color:#9aa6b8;font:12px var(--body)}
+.taskbar .st{width:16px;height:16px;background:linear-gradient(135deg,#4a9be6,#2f6fc4);border-radius:3px}
+.tray{display:flex;gap:12px;align-items:center}
+#trayicon{width:20px;height:20px;transition:opacity .3s}
+#trayicon.off{opacity:0}
+#wheel{position:absolute;width:240px;height:240px;transform:scale(.6);opacity:0;visibility:hidden;transition:transform .28s cubic-bezier(.2,.9,.3,1.2),opacity .2s,visibility 0s .28s;z-index:10}
+#wheel.on{transform:scale(1);opacity:1;visibility:visible;transition:transform .28s cubic-bezier(.2,.9,.3,1.2),opacity .2s}
+#wheel svg{width:100%;height:100%;overflow:visible;filter:drop-shadow(0 8px 18px rgba(0,0,0,.55))}
+.sec{fill:#2f3239;stroke:#16181c;stroke-width:3;transition:fill .15s}
+.sec.act{fill:var(--accent)}
+.lbl{fill:#d6d9df;font:500 9.5px var(--body);text-anchor:middle;pointer-events:none}
+.sec.act+.lbl,.lbl.act{fill:#fff}
+.ctr{fill:#3a3d44;stroke:#5b5f68;stroke-width:1.5;transition:fill .15s}
+.ctr.hot{fill:var(--danger);stroke:#ef7a6f}
+.ctrt{fill:#fff;font:600 12px var(--body);text-anchor:middle;opacity:0;transition:opacity .15s}
+.ctrt.hot{opacity:1}
+#pinchip{position:absolute;padding:2px 8px;border-radius:99px;background:var(--accent);color:#fff;font:600 11px var(--body);opacity:0;transition:opacity .2s;z-index:12}
+#pinchip.on{opacity:1}
+#panel{position:absolute;opacity:0;visibility:hidden;transform:translateY(8px);transition:opacity .2s,transform .2s,visibility 0s .2s;z-index:9}
+#panel.on{opacity:1;visibility:visible;transform:none;transition:opacity .2s,transform .2s}
+.row{display:flex;gap:10px}
+.frame{background:#2a2d33;border:1px solid #14161a;border-radius:9px;box-shadow:0 8px 20px rgba(0,0,0,.5);overflow:hidden;color:#e4e6ea}
+.fh{display:flex;align-items:center;gap:8px;height:26px;padding:0 8px 0 11px;background:#202328;font:600 11.5px var(--body);color:#d7dae0}
+.fh .sp{flex:1}
+.fh svg{width:13px;height:13px;color:#8e95a2}
+.fh .x{cursor:pointer}
+.fb{padding:8px}
+.grid{display:grid;gap:6px}
+.tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-radius:7px;background:#3a3d44;border:1px solid #1d1f23;font:500 11px var(--body);text-align:center;color:#e8eaee;transition:background .3s,width .3s,height .3s,transform .12s,border-color .15s}
+.tile.hov{background:#4a76c5}
+.tile.press{transform:scale(.94)}
+.tile.add{border:1.5px dashed #7d8594;background:transparent;color:#aab1be}
+.tile .ic{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:#fff;font:700 13px var(--display)}
+.tile .fold{width:30px;height:24px}
+.kc{display:inline-grid;place-items:center;min-width:24px;height:22px;padding:0 6px;border-radius:5px;background:#e6e8ec;color:#1c1e22;font:500 10.5px var(--mono);box-shadow:0 2px 0 #8a909c}
+.plus{color:#9aa1ad;font:600 11px var(--body);margin:0 3px}
+.combo{display:inline-flex;align-items:center;padding:5px 7px;border-radius:7px;background:#34373e;border:1px solid #1d1f23;transition:background .15s,transform .12s}
+.combo.hov{background:#4a76c5}.combo.press{transform:scale(.94)}
+.combo.new{animation:pop .5s}
+@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:none;opacity:1}}
+.crow{display:flex;gap:6px;justify-content:center;margin:5px 0}
+.slider{height:6px;border-radius:3px;background:#1b1d21;position:relative;margin:8px 0}
+.slider b{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--accent);transition:width .8s}
+.dev{padding:5px 8px;border-radius:6px;background:#34373e;font:500 11px var(--body);margin-top:5px;transition:background .2s}
+.dev.on{background:var(--accent)}
+.search{display:flex;gap:6px;margin-bottom:8px}
+.search span{flex:1;background:#1d1f23;border-radius:6px;padding:6px 9px;font:11px var(--body);color:#9aa1ad;min-height:27px}
+.search em{font-style:normal;background:#4a76c5;border-radius:6px;padding:6px 12px;font:600 11px var(--body)}
+#cursor{position:absolute;left:0;top:0;width:22px;height:22px;z-index:50;pointer-events:none;transition:left .7s cubic-bezier(.4,0,.2,1),top .7s cubic-bezier(.4,0,.2,1);filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}
+#cursor.rc::after,#cursor.lc::after{content:"";position:absolute;left:-9px;top:-9px;width:22px;height:22px;border-radius:50%;border:2px solid var(--accent-hi);animation:ring .45s ease-out forwards}
+#cursor.rc::after{border-color:#e6b84a}
+@keyframes ring{from{transform:scale(.3);opacity:1}to{transform:scale(1.8);opacity:0}}
+#keys{position:absolute;left:16px;bottom:50px;z-index:40;display:flex;flex-direction:column;gap:6px;padding:8px 11px;border-radius:9px;background:rgba(10,12,16,.82);border:1px solid #2c3340;opacity:0;transform:translateY(6px);transition:opacity .2s,transform .2s}
+#keys.on{opacity:1;transform:none}
+#keys small{font:11px var(--body);color:#9aa6b8}
+#hud{position:absolute;right:16px;bottom:50px;z-index:40;min-width:210px;padding:9px 12px;border-radius:9px;background:rgba(10,12,16,.86);border:1px solid #2c3340;font:12px/1.55 var(--body);color:#cfd5e0;opacity:0;transition:opacity .25s}
+#hud.on{opacity:1}
+#hud b{color:#fff;font-weight:600}
+#hud .sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px;border:1px solid #fff4}
+#tmenu{position:absolute;right:50px;bottom:40px;width:236px;padding:5px;border-radius:9px;background:#23272e;border:1px solid #394150;box-shadow:0 10px 26px rgba(0,0,0,.55);z-index:35;opacity:0;visibility:hidden;transition:opacity .15s}
+#tmenu.on{opacity:1;visibility:visible}
+#tmenu div{padding:6px 10px;border-radius:6px;font:12px var(--body);color:#dfe3ea}
+#tmenu div.hov{background:var(--accent);color:#fff}
+#tmenu hr{border:0;border-top:1px solid #394150;margin:4px 0}
+#dlg{position:absolute;left:46px;right:46px;top:26px;bottom:50px;z-index:45;border-radius:10px;background:#23262c;border:1px solid #3a404c;box-shadow:0 18px 40px rgba(0,0,0,.6);display:none;overflow:hidden}
+#dlg.on{display:flex}
+#dlg .nv{width:170px;background:#1b1d22;padding:8px;display:flex;flex-direction:column;gap:2px;overflow:hidden}
+#dlg .nv div{padding:3.5px 9px;border-radius:5px;font:11.5px var(--body);color:#9aa1ad;transition:background .15s}
+#dlg .nv div.on{background:var(--accent);color:#fff}
+#dlg .ct{flex:1;padding:16px 20px;font:13px var(--body);color:#dfe3ea;position:relative}
+#dlg h3{margin:0 0 4px;font:600 15px var(--display)}
+#dlg p{margin:0 0 12px;color:#9aa1ad;font-size:12px}
+.drop{border:2px dashed #6f7786;border-radius:12px;height:120px;display:grid;place-items:center;color:#aab1be;text-align:center;font-size:13px;transition:border-color .2s,background .2s}
+.drop.hot{border-color:var(--accent-hi);background:rgba(74,118,197,.16)}
+.zip{position:absolute;z-index:46;padding:6px 10px;border-radius:7px;background:#e8eaee;color:#1c1e22;font:500 11.5px var(--mono);box-shadow:0 6px 14px rgba(0,0,0,.5);transition:left .9s cubic-bezier(.4,0,.2,1),top .9s cubic-bezier(.4,0,.2,1),opacity .3s}
+.confirm{position:absolute;left:50%;top:50%;width:300px;transform:translate(-50%,-50%) scale(.92);padding:14px 16px;border-radius:10px;background:#2c3038;border:1px solid #4a5160;box-shadow:0 14px 34px rgba(0,0,0,.6);opacity:0;visibility:hidden;transition:.2s;z-index:48;font:12.5px/1.5 var(--body)}
+.confirm.on{opacity:1;visibility:visible;transform:translate(-50%,-50%)}
+.confirm .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+.confirm button{all:unset;padding:5px 16px;border-radius:6px;background:#3d424c;font:500 12px var(--body)}
+.confirm button.yes{background:var(--accent)}
+.confirm button.hov{outline:2px solid var(--accent-hi)}
+.bar{height:8px;border-radius:4px;background:#14161a;overflow:hidden;margin-top:12px}
+.bar b{display:block;height:100%;width:0;background:var(--ok);transition:width 1.4s linear}
+.langs{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.langs span{padding:3px 8px;border-radius:5px;background:#2f343c;font:11px var(--body);color:#aab1be;transition:background .15s}
+.langs span.on{background:var(--accent);color:#fff}
+.cap{margin-top:12px;display:flex;gap:14px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.cap h2{margin:0 0 3px;font:700 18px/1.25 var(--display)}
+.cap p{margin:0;color:var(--muted);max-width:62ch;min-height:2.9em}
+.ctl{display:flex;gap:6px}
+.ctl button{all:unset;cursor:pointer;width:38px;height:34px;border-radius:8px;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;color:var(--text)}
+.ctl button:hover{border-color:var(--accent)}
+.ctl button:focus-visible{outline:2px solid var(--accent-hi)}
+.ctl svg{width:16px;height:16px}
+.dots{display:flex;gap:5px;margin-top:10px}
+.dots i{height:3px;flex:1;border-radius:2px;background:var(--line);transition:background .3s}
+.dots i.done{background:#445a82}.dots i.on{background:var(--accent-hi)}
+@media(prefers-reduced-motion:reduce){*{transition-duration:.01s!important;animation-duration:.01s!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Radial Wheel in motion</h1><span>Version 1.2.0 · a guided tour of what the tool does</span></header>
+  <div class="layout">
+    <nav aria-label="Chapters"><ol id="chapters"></ol></nav>
+    <main>
+      <div class="stagewrap" id="sw">
+        <div class="stage" id="stage">
+          <div class="fakewin"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div id="panel"></div>
+          <div id="wheel"></div>
+          <div id="pinchip">Pinned</div>
+          <div id="keys"></div>
+          <div id="hud"></div>
+          <div id="dlg"></div>
+          <div id="tmenu"></div>
+          <div class="taskbar"><span class="st"></span><span class="tray">
+            <svg id="trayicon" viewBox="-12 -12 24 24"><circle r="10" fill="#2f3239" stroke="#8d96a6" stroke-width="1.2"/><path d="M0-10V10M-10 0H10M-7-7L7 7M7-7L-7 7" stroke="#16181c" stroke-width="1.4"/><circle r="3.6" fill="#8d96a6"/></svg>
+            <span>18:04</span></span></div>
+          <svg id="cursor" viewBox="0 0 22 22"><path d="M3 2l14 8.5-6 1.6-2.4 6z" fill="#fff" stroke="#111" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="dots" id="dots"></div>
+      <div class="cap">
+        <div><h2 id="ct"></h2><p id="cp"></p></div>
+        <div class="ctl">
+          <button id="prev" aria-label="Previous chapter"><svg viewBox="0 0 16 16"><path d="M12 3L5 8l7 5zM3 3v10" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></button>
+          <button id="pp" aria-label="Pause"><svg viewBox="0 0 16 16" id="ppi"></svg></button>
+          <button id="next" aria-label="Next chapter"><svg viewBox="0 0 16 16"><path d="M4 3l7 5-7 5zM13 3v10" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></button>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script>
+(function(){
+"use strict";
+var $=function(id){return document.getElementById(id)};
+var stage=$("stage"),sw=$("sw"),wheelEl=$("wheel"),panel=$("panel"),cursor=$("cursor"),keysEl=$("keys"),hud=$("hud"),dlg=$("dlg"),tmenu=$("tmenu"),pinchip=$("pinchip"),tray=$("trayicon");
+var CANCEL={cancel:true};
+var started=false,token=0,paused=false,cur=0,wc={x:400,y:350},pinned=false;
+var R=120;
+
+/* ---------- scaling ---------- */
+var scale=1;
+function fit(){scale=sw.clientWidth/800;stage.style.transform="scale("+scale+")";sw.style.height=(520*scale)+"px"}
+fit();new ResizeObserver(fit).observe(sw);
+
+/* ---------- timing ---------- */
+function S(ms){return new Promise(function(res,rej){var my=token,left=ms;(function tick(){
+  if(my!==token)return rej(CANCEL);
+  if(paused)return void setTimeout(tick,80);
+  if(left<=0)return res();var d=Math.min(40,left);left-=d;setTimeout(tick,d)})()})}
+
+/* ---------- wheel ---------- */
+var NAMES=["Keyboard","Folders","Windows","Favorites","Sound","Internet","Settings","Programs"];
+function pt(r,deg){var a=deg*Math.PI/180;return [(r*Math.sin(a)).toFixed(2),(-r*Math.cos(a)).toFixed(2)]}
+(function build(){
+  var ro=116,ri=50,h='<svg viewBox="-120 -120 240 240" aria-hidden="true">';
+  for(var i=0;i<8;i++){
+    var a0=i*45-22.5,a1=i*45+22.5,p=pt(ri,a0),q=pt(ro,a0),r2=pt(ro,a1),s=pt(ri,a1),l=pt(84,i*45);
+    h+='<path class="sec" data-i="'+i+'" d="M'+p+' L'+q+' A'+ro+' '+ro+' 0 0 1 '+r2+' L'+s+' A'+ri+' '+ri+' 0 0 0 '+p+'Z"/>';
+    h+='<text class="lbl" x="'+l[0]+'" y="'+(+l[1]+3)+'">'+NAMES[i]+'</text>';
+  }
+  h+='<circle class="ctr" r="44"/><text class="ctrt" y="4">Delete</text></svg>';
+  wheelEl.innerHTML=h;
+})();
+var secs=wheelEl.querySelectorAll(".sec"),ctr=wheelEl.querySelector(".ctr"),ctrt=wheelEl.querySelector(".ctrt");
+function setActive(i){secs.forEach(function(p,k){p.classList.toggle("act",k===i)})}
+function setHot(v){ctr.classList.toggle("hot",v);ctrt.classList.toggle("hot",v)}
+function wheelShow(x,y){wc.x=x;wc.y=y;wheelEl.style.left=(x-R)+"px";wheelEl.style.top=(y-R)+"px";wheelEl.classList.add("on")}
+function setPin(v){pinned=v;pinchip.classList.toggle("on",v);pinchip.style.left=(wc.x+R-34)+"px";pinchip.style.top=(wc.y-R-6)+"px"}
+function wheelHide(){wheelEl.classList.remove("on");hidePanel();setActive(-1);setHot(false);setPin(false)}
+function sectorPos(i){var a=i*45*Math.PI/180;return [wc.x+Math.sin(a)*R*.72,wc.y-Math.cos(a)*R*.72]}
+
+/* ---------- panels ---------- */
+var GEAR='<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.4 1.5"/></svg>';
+var XB='<svg class="x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+function frame(title,inner,w,cls){return '<div class="frame '+(cls||"")+'" style="'+(w?"width:"+w+"px":"")+'"><div class="fh"><span>'+title+'</span><span class="sp"></span>'+GEAR+XB+'</div><div class="fb">'+inner+'</div></div>'}
+function showPanel(html){
+  panel.innerHTML=html;panel.classList.add("on");
+  var w=panel.offsetWidth;
+  panel.style.left=Math.max(10,Math.min(800-10-w,wc.x-w/2))+"px";
+  panel.style.bottom=(520-(wc.y-R)+14)+"px";
+}
+function hidePanel(){panel.classList.remove("on")}
+var FOLD='<svg class="fold" viewBox="0 0 32 26"><path d="M2 5a2 2 0 0 1 2-2h8l3 4h13a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z" fill="#e9b949"/></svg>';
+function app(c,l){return '<span class="ic" style="background:'+c+'">'+l+'</span>'}
+function tile(lbl,ic,o){o=o||{};return '<div class="tile'+(o.cls?" "+o.cls:"")+'" style="'+(o.w?"width:"+o.w+"px;":"")+(o.h?"height:"+o.h+"px;":"")+(o.bg?"background:"+o.bg+";":"")+'" data-k="'+(o.k||"")+'">'+ic+'<span>'+lbl+'</span></div>'}
+var FOLDERS=["Documents","Pictures","Music","Videos","Projects","Downloads","Archive","System","Work","Backup","Clients","Scans"];
+function folders(n,per,o){
+  o=o||{};var t="";for(var i=0;i<n;i++){t+= (i===n-1&&o.addLast)?tile("Add",'<span class="ic" style="border:1.5px dashed #8b93a1;color:#aab1be">+</span>',{cls:"add",w:o.w,h:o.h,k:"add"}):tile(FOLDERS[i%FOLDERS.length],FOLD,{w:o.w,h:o.h,bg:o.bg,k:"f"+i})}
+  return frame("Directories and Folders",'<div class="grid" style="grid-template-columns:repeat('+per+',auto)">'+t+'</div>');
+}
+function kcs(arr){return arr.map(function(k){return '<span class="kc">'+k+'</span>'}).join('<span class="plus">+</span>')}
+var COMBOS=[["Shift","Win","S"],["Ctrl","C"],["Ctrl","V"],["Alt","←"],["Alt","→"],["Ctrl","Z"],["Ctrl","Shift","T"],["Ctrl","W"],["Alt","Tab"]];
+function keyboard(rows){
+  var l="";for(var r=0;r<rows;r++){l+='<div class="crow">';for(var c=0;c<3;c++){var cb=COMBOS[(r*3+c)%COMBOS.length];l+='<span class="combo'+(r===2?" new":"")+'" data-k="c'+r+c+'">'+kcs(cb)+'</span>'}l+='</div>'}
+  var mid='<div class="tile" data-k="osk" style="height:76px;margin-top:4px"><svg width="60" height="34" viewBox="0 0 60 34"><rect x="1" y="1" width="58" height="32" rx="5" fill="#d9dce2"/><g fill="#7b8190"><rect x="6" y="6" width="7" height="6" rx="1.5"/><rect x="16" y="6" width="7" height="6" rx="1.5"/><rect x="26" y="6" width="7" height="6" rx="1.5"/><rect x="36" y="6" width="7" height="6" rx="1.5"/><rect x="46" y="6" width="8" height="6" rx="1.5"/><rect x="6" y="15" width="10" height="6" rx="1.5"/><rect x="19" y="15" width="7" height="6" rx="1.5"/><rect x="29" y="15" width="7" height="6" rx="1.5"/><rect x="39" y="15" width="15" height="6" rx="1.5"/><rect x="14" y="24" width="32" height="6" rx="1.5"/></g></svg><span>On-screen keyboard</span></div>';
+  var rt='<div class="crow"><span class="kc">Enter</span><span class="kc" style="min-width:56px">Space</span><span class="kc">⌫</span></div><div class="crow"><span class="kc">Win</span><span class="kc">Menu</span><span class="kc">Vol−</span><span class="kc">Vol+</span><span class="kc">Esc</span></div>';
+  return '<div class="row">'+frame("Quick keyboard commands",l,258)+frame("Standard keyboard",mid,128)+frame("Main and special Windows keys",rt,214)+'</div>';
+}
+function system(){
+  var items=[["Start","#2f7fd6","S"],["Task Mgr","#4aa36c","T"],["Settings","#7a8396","⚙"],["Lock","#d29a35","L"],["Sleep","#8b6cc4","Z"],["Restart","#d9803b","R"],["Shut Down","#d9483b","⏻"],["Run","#3aa6b8","▶"]];
+  return frame("Windows System Commands",'<div class="grid" style="grid-template-columns:repeat(8,78px)">'+items.map(function(x){return tile(x[0],app(x[1],x[2]),{h:62,k:"s"+x[0]})}).join("")+"</div>");
+}
+function sound(vol){
+  var d=["Speakers (Realtek)","Headphones (USB)","Monitor (HDMI)"];
+  return frame("Sound Settings",'<div class="row"><div style="width:300px"><div style="font:600 11px var(--body);color:#aab1be">Volume · <span id="vv">'+vol+'</span> %</div><div class="slider"><b id="vb" style="width:'+vol+'%"></b></div></div><div style="width:300px"><div style="font:600 11px var(--body);color:#aab1be">Playback devices</div>'+d.map(function(x,i){return '<div class="dev'+(i===0?" on":"")+'" data-k="d'+i+'">'+x+'</div>'}).join("")+"</div></div>");
+}
+function internet(){
+  var b=[["Chrome","#e4572e","C"],["Firefox","#e8812c","F"],["Edge","#2c9fd6","E"],["Opera","#cf2f43","O"]];
+  var s=[["News","#4a76c5","N"],["Mail","#3f9d6b","M"],["Social","#8b6cc4","S"]];
+  return '<div class="row">'+frame("Choose Browser",'<div class="grid" style="grid-template-columns:repeat(4,62px)">'+b.map(function(x){return tile(x[0],app(x[1],x[2]),{h:56,k:"b"+x[0]})}).join("")+"</div>")+
+  frame("Google Search",'<div class="search"><span id="q">Search Google…</span><em>Search</em></div>',250)+
+  frame("Saved Sites",'<div class="grid" style="grid-template-columns:repeat(3,58px)">'+s.map(function(x){return tile(x[0],app(x[1],x[2]),{h:56})}).join("")+"</div>")+"</div>";
+}
+function programs(){
+  var a=[["Browser","#2c9fd6","B"],["Editor","#4a76c5","E"],["Player","#8b6cc4","P"],["Calculator","#4aa36c","="],["Graphics","#d9803b","G"],["Mail","#cf2f43","M"],["Games","#3aa6b8","▶"],["Notes","#d29a35","N"]];
+  return frame("Programs and Applications",'<div class="grid" style="grid-template-columns:repeat(8,78px)">'+a.map(function(x){return tile(x[0],app(x[1],x[2]),{h:62})}).join("")+"</div>");
+}
+function favorites(){
+  var a=[["backup.bat","#3aa6b8","⌘"],["Report.xlsx","#3f9d6b","X"],["Notes.txt","#7a8396","T"],["Projects","#e9b949","▣"],["Add","#555","+"]];
+  return frame("Favorites and Quick Access",'<div class="grid" style="grid-template-columns:repeat(5,92px)">'+a.map(function(x,i){return i===4?tile("Add",'<span class="ic" style="border:1.5px dashed #8b93a1;color:#aab1be">+</span>',{cls:"add",h:62}):tile(x[0],app(x[1],x[2]),{h:62})}).join("")+"</div>");
+}
+var PANELS={0:function(){return keyboard(2)},1:function(){return folders(8,8,{h:62})},2:system,3:favorites,4:function(){return sound(40)},5:internet,7:programs};
+
+/* ---------- cursor, keys, hud ---------- */
+function cpos(x,y){cursor.style.left=(x-3)+"px";cursor.style.top=(y-2)+"px"}
+async function moveTo(x,y,ms){ms=ms||700;cursor.style.transitionDuration=ms+"ms";cpos(x,y);await S(ms+60)}
+function posOf(el,dx,dy){var r=el.getBoundingClientRect(),s=stage.getBoundingClientRect();return [(r.left-s.left+r.width*(dx==null?.5:dx))/scale,(r.top-s.top+r.height*(dy==null?.5:dy))/scale]}
+async function click(r){cursor.classList.remove("lc","rc");void cursor.offsetWidth;cursor.classList.add(r?"rc":"lc");await S(380)}
+async function hoverSector(i,ms){var p=sectorPos(i);await moveTo(p[0],p[1],ms||650);setHot(false);setActive(i);await S(150);if(!pinned&&PANELS[i])showPanel(PANELS[i]());else if(!pinned)hidePanel();await S(500)}
+async function press(el){if(!el)return;el.classList.add("hov");await S(250);el.classList.add("press");await S(160);el.classList.remove("press");await S(120);el.classList.remove("hov")}
+function showKeys(arr,label){keysEl.innerHTML='<div>'+kcs(arr)+'</div><small>'+label+'</small>';keysEl.classList.add("on")}
+function hideKeys(){keysEl.classList.remove("on")}
+function showHud(h){hud.innerHTML=h;hud.classList.add("on")}
+function hideHud(){hud.classList.remove("on")}
+function say(t){$("cp").textContent=t}
+
+function reset(){
+  wheelHide();hideKeys();hideHud();dlg.classList.remove("on");dlg.innerHTML="";tmenu.classList.remove("on");tray.classList.remove("off");
+  panel.innerHTML="";cursor.setAttribute("class","");cursor.style.transitionDuration="0ms";cpos(120,130);void cursor.offsetWidth;
+}
+async function summon(x,y,key){
+  await moveTo(x,y,800);showKeys(key||["Ctrl","Alt","Q"],"Your global hotkey (example)");await S(450);
+  wheelShow(x,y);await S(350);hideKeys();
+}
+var HK=["Ctrl","Alt","Q"];
+
+/* ---------- chapters ---------- */
+var CH=[
+{t:"Call it up",d:"Press your hotkey and the wheel opens under the cursor.",run:async function(){
+  say("Press your global hotkey: the wheel opens centred on the cursor.");
+  await summon(400,350);
+  say("Press the hotkey again: it toggles the wheel closed.");
+  showKeys(HK,"Toggle");await S(600);wheelHide();hideKeys();await S(900);
+  say("Near a screen edge the wheel is clamped, so it never leaves the screen.");
+  await moveTo(40,470,900);showKeys(HK,"Hotkey");await S(400);wheelShow(126,360);hideKeys();await S(1800);
+  say("The wheel stays on screen, with its panels above it.");await S(1200);
+  wheelHide();await S(500);
+}},
+{t:"Hover or pin",d:"Hover opens a panel; a click pins it until you close it.",run:async function(){
+  await summon(400,350);
+  say("Hovering a sector opens its panel after a short delay.");
+  await hoverSector(1);await hoverSector(3);
+  say("A click on the sector pins the panel. Hovering other sectors no longer switches it.");
+  await click();setPin(true);await S(400);
+  await moveTo.apply(null,sectorPos(5).concat([700]));setActive(5);await S(900);
+  await moveTo.apply(null,sectorPos(3).concat([600]));setActive(3);await S(500);
+  say("The X button closes the pinned panel. The wheel stays.");
+  var xb=panel.querySelector(".x");var p=posOf(xb);await moveTo(p[0],p[1],800);await click();
+  hidePanel();setPin(false);setActive(-1);await S(700);
+  say("Click outside the panel: the first click closes it, the second hides the wheel.");
+  await hoverSector(1);await moveTo(690,120,800);await click();hidePanel();setActive(-1);await S(900);
+  await click();wheelHide();await S(700);
+}},
+{t:"Keyboard shortcuts",d:"Quick combinations, the on-screen keyboard and special keys.",run:async function(){
+  await summon(400,350);
+  say("The Keyboard sector holds your quick combinations, the on-screen keyboard and Windows keys.");
+  await hoverSector(0);
+  var c=panel.querySelector('[data-k="c01"]');var p=posOf(c);await moveTo(p[0],p[1],800);
+  say("A click sends the combination to the window you were just using, then the wheel closes.");
+  await press(c);showKeys(["Ctrl","C"],"Sent to the previous window");await S(1200);hideKeys();
+  say("In Settings you can add or remove rows and columns of combinations.");
+  showHud("<b>Settings → Shortcuts</b><br>＋ Row · − Row<br>＋ Column · − Column");await S(1400);
+  showPanel(keyboard(3));await S(1800);hideHud();
+  var o=panel.querySelector('[data-k="osk"]');p=posOf(o);await moveTo(p[0],p[1],800);
+  say("The middle button opens the standard Windows on-screen keyboard.");
+  await press(o);await S(900);wheelHide();await S(500);
+}},
+{t:"Folders and slots",d:"Add slots, choose the layout and colour the tiles.",run:async function(){
+  await summon(400,350);
+  say("Folders, programs and favorites are lists of slots. Each slot holds a folder, a program or a file.");
+  await hoverSector(1,700);
+  var f=panel.querySelector('[data-k="f4"]');var p=posOf(f);await moveTo(p[0],p[1],800);await press(f);
+  say("Add a slot in Settings: one more tile appears, empty until you give it a folder or program.");
+  showHud("<b>Settings → Folders</b><br>＋ Add slot<br>▲ ▼ reorder · ✕ remove");
+  showPanel(folders(9,9,{h:62,addLast:true}));await S(1800);
+  say("Many slots? Choose the layout: here 5 tiles per row.");
+  showHud("<b>Size and grid</b><br>Layout: <b>5 per row</b>");
+  showPanel(folders(9,5,{h:62,addLast:true}));await S(1900);
+  say("Set tile width and height, icon size and text size by hand.");
+  showHud("<b>Size and grid</b><br>Tile: <b>96 × 72 px</b><br>Icon: <b>34 px</b>");
+  showPanel(folders(9,5,{w:96,h:72,addLast:true}));await S(1900);
+  say("Pick a background colour and its transparency for the tiles.");
+  showHud('<b>Tile background</b><br><span class="sw" style="background:#4a76c5"></span><b>#4A76C5</b> · 45 %');
+  showPanel(folders(9,5,{w:96,h:72,addLast:true,bg:"rgba(74,118,197,.45)"}));await S(2300);
+  hideHud();wheelHide();await S(400);
+}},
+{t:"Windows, sound, internet",d:"System commands, volume and devices, browsers and search.",run:async function(){
+  await summon(400,350);
+  say("Windows commands: Start, Task Manager, Lock, Sleep, Restart, Shut Down, Run.");
+  await hoverSector(2,700);await S(1100);
+  say("Sound: set the volume and switch the default playback device.");
+  await hoverSector(4,700);
+  document.getElementById("vb").style.width="75%";document.getElementById("vv").textContent="75";await S(1300);
+  var d=panel.querySelector('[data-k="d1"]');var p=posOf(d);await moveTo(p[0],p[1],700);await click();
+  panel.querySelectorAll(".dev").forEach(function(e,i){e.classList.toggle("on",i===1)});await S(1000);
+  say("Internet: choose a browser, search Google, open saved sites.");
+  setPin(false);await hoverSector(5,700);
+  var q=document.getElementById("q");q.textContent="";var txt="radial menu windows";
+  for(var i=1;i<=txt.length;i++){q.textContent=txt.slice(0,i);await S(55)}
+  await S(900);
+  say("Programs: launch your applications from one place.");
+  await hoverSector(7,700);await S(1300);
+  wheelHide();await S(400);
+}},
+{t:"The Delete button",d:"The centre button works as the Delete key.",run:async function(){
+  await summon(400,350);
+  say("The centre stays neutral while the cursor rests on it, so it cannot trigger by accident.");
+  await S(1400);
+  say("Move the cursor a little inside the centre: it turns red and reads Delete.");
+  await moveTo(wc.x+9,wc.y+3,300);setHot(true);await S(1500);
+  say("A click presses the real Delete key in the window you were using, then the wheel hides.");
+  await click();showKeys(["Delete"],"Sent to the previous window");wheelHide();await S(1600);hideKeys();
+}},
+{t:"Settings",d:"Fifteen pages, from layout and icons to hotkeys and themes.",run:async function(){
+  var pages=[["View","Opacity, scale, panel size and animations."],["Layout","Which sector sits where."],["Icons","Replace sector icons with your own."],["Folders","Dynamic folder slots."],["Programs","Dynamic program slots."],["Shortcuts","Rows and columns of quick combinations."],["Favorites","Files, scripts and folders."],["Internet","Browsers, saved sites and search."],["Size and grid","Per-panel layout, sizes and tile colours."],["Functions","Behaviour, autostart and language."],["Themes","Colours and accent."],["Hotkeys","The activation hotkey."],["Sounds","Interface sounds."],["Update","Update from a ZIP archive."],["Reset","Restore defaults."]];
+  reset();dlg.classList.add("on");
+  dlg.innerHTML='<div class="nv">'+pages.map(function(p){return "<div>"+p[0]+"</div>"}).join("")+'</div><div class="ct"><h3 id="sh"></h3><p id="sd"></p><div id="sx"></div></div>';
+  var nv=dlg.querySelectorAll(".nv div");
+  say("Every part of the wheel can be edited, with changes applied as you make them.");
+  for(var i=0;i<pages.length;i++){
+    nv.forEach(function(e,k){e.classList.toggle("on",k===i)});
+    $("sh").textContent=pages[i][0];$("sd").textContent=pages[i][1];
+    var x="";
+    if(pages[i][0]==="Size and grid"){
+      x='<div class="grid" id="gp" style="grid-template-columns:repeat(8,auto)"></div>';
+      $("sx").innerHTML=x;
+      var gp=$("gp"),cols=[8,5,4,3,4];
+      for(var c=0;c<cols.length;c++){gp.style.gridTemplateColumns="repeat("+cols[c]+",44px)";gp.innerHTML="";for(var n=0;n<9;n++){gp.innerHTML+='<div class="tile" style="height:30px;background:'+(c>3?"rgba(74,118,197,.5)":"#3a3d44")+'"></div>'}$("sd").textContent=["One row","5 per row","4 per row","3 rows","Colour with transparency"][c];await S(850)}
+      continue;
+    }
+    if(pages[i][0]==="Functions"){
+      var L=["English","Български","Deutsch","Français","Español","Italiano","Português","Nederlands","Polski","Čeština","Română","Ελληνικά","Türkçe","Русский","Українська","Svenska","Magyar","日本語","简体中文","한국어"];
+      $("sx").innerHTML='<div class="langs">'+L.map(function(l){return "<span>"+l+"</span>"}).join("")+"</div>";
+      var sp=$("sx").querySelectorAll("span");
+      for(var j=0;j<sp.length;j++){sp.forEach(function(e,k){e.classList.toggle("on",k===j)});await S(170)}
+      $("sd").textContent="20 languages, English by default, Bulgarian included.";await S(500);continue;
+    }
+    await S(560);
+  }
+  dlg.classList.remove("on");await S(300);
+}},
+{t:"Tray and restart",d:"Runs quietly in the tray; the hotkey starts it again.",run:async function(){
+  reset();
+  say("No console window. A small wheel icon sits in the tray.");
+  var tp=posOf(tray);await moveTo(tp[0],tp[1],1000);await S(400);
+  await click(true);
+  tmenu.innerHTML='<div>Open the wheel</div><div>Settings…</div><div>Start with Windows</div><hr><div>Close (hotkey starts it again)</div><div>Exit completely</div>';
+  tmenu.classList.add("on");await S(700);
+  var it=tmenu.querySelectorAll("div");
+  async function hv(i){it.forEach(function(e,k){e.classList.toggle("hov",k===i)});var p=posOf(it[i],.3);await moveTo(p[0],p[1],450);await S(550)}
+  await hv(0);await hv(1);
+  say("Close stops the app but leaves a tiny listener. Your hotkey will start it again.");
+  await hv(3);await click();tmenu.classList.remove("on");tray.classList.add("off");await S(1200);
+  await moveTo(400,350,800);showKeys(HK,"Hotkey");await S(600);
+  say("The hotkey relaunches the app and the wheel appears.");
+  tray.classList.remove("off");wheelShow(400,350);hideKeys();await S(1700);
+  wheelHide();
+  say("Exit completely also stops the listener, so the hotkey stays silent until the next start.");
+  await S(1200);
+}},
+{t:"Update from a ZIP",d:"Drop a new version's archive and confirm; it restarts updated.",run:async function(){
+  reset();dlg.classList.add("on");
+  dlg.innerHTML='<div class="nv"><div>Functions</div><div>Themes</div><div>Hotkeys</div><div>Sounds</div><div class="on">Update</div><div>Reset</div></div><div class="ct"><h3>Update</h3><p>Current version: 1.1.0 · Settings and configuration are kept.</p><div class="drop" id="dz">Drop the .zip archive here<br>or click to choose it</div><div class="bar" id="bar"><b></b></div><div class="confirm" id="cf">Update the tool?<br><br>Current version: 1.1.0<br>Version in the archive: 1.2.0<br><br>The app will close, files will be replaced and it will start again.<div class="btns"><button>No</button><button class="yes" id="yes">Yes</button></div></div></div>';
+  var zip=document.createElement("div");zip.className="zip";zip.textContent="RadialWheel_1.2.0.zip";zip.style.left="600px";zip.style.top="440px";stage.appendChild(zip);
+  say("Choose a ZIP, or drag it into the Update page.");
+  var dz=$("dz");await S(900);
+  await moveTo(640,452,800);cursor.style.zIndex=60;
+  zip.style.left="634px";zip.style.top="440px";
+  var p=posOf(dz);zip.style.transitionDuration=".9s";
+  cursor.style.transitionDuration="900ms";cpos(p[0],p[1]);zip.style.left=(p[0]-70)+"px";zip.style.top=(p[1]-12)+"px";await S(1000);
+  dz.classList.add("hot");await S(500);
+  say("The tool checks the archive and asks before changing anything.");
+  zip.style.opacity=0;dz.classList.remove("hot");$("cf").classList.add("on");await S(1700);
+  var y=posOf($("yes"));await moveTo(y[0],y[1],700);$("yes").classList.add("hov");await click();await S(200);
+  $("cf").classList.remove("on");
+  say("The app closes, the files are replaced (the old version is kept as a backup) and it starts again.");
+  var b=$("bar").firstChild;void b.offsetWidth;b.style.width="100%";await S(1700);
+  dlg.classList.remove("on");zip.remove();await S(500);
+  wheelShow(400,350);hudDone();await S(1800);
+  function hudDone(){showHud("<b>Radial Wheel 1.2.0</b><br>Updated and running")}
+  hideHud();wheelHide();await S(300);
+}}
+];
+
+/* ---------- UI ---------- */
+var ol=$("chapters"),dots=$("dots");
+CH.forEach(function(c,i){
+  var li=document.createElement("li");li.innerHTML='<button type="button"><span class="n">'+(i+1<10?"0":"")+(i+1)+'</span><span class="t">'+c.t+'</span></button>';
+  li.firstChild.addEventListener("click",function(){play(i)});ol.appendChild(li);
+  var d=document.createElement("i");dots.appendChild(d);
+});
+function ui(){
+  [].forEach.call(ol.children,function(li,i){li.classList.toggle("on",i===cur)});
+  [].forEach.call(dots.children,function(d,i){d.className=i<cur?"done":(i===cur?"on":"")});
+  $("ct").textContent=CH[cur].t;$("cp").textContent=CH[cur].d;
+  $("ppi").innerHTML=paused?'<path d="M4 2.5l9 5.5-9 5.5z" fill="currentColor"/>':'<path d="M4 3h3v10H4zM9 3h3v10H9z" fill="currentColor"/>';
+  $("pp").setAttribute("aria-label",paused?"Play":"Pause");
+}
+async function play(i){
+  started=true;token++;var my=token;cur=(i+CH.length)%CH.length;paused=false;ui();
+  var old=stage.querySelector(".zip");if(old)old.remove();
+  reset();
+  try{await S(200);await CH[cur].run();await S(900);if(my===token)play(cur+1)}
+  catch(e){if(e!==CANCEL)console.error(e)}
+}
+$("prev").addEventListener("click",function(){play(cur-1)});
+$("next").addEventListener("click",function(){play(cur+1)});
+$("pp").addEventListener("click",function(){if(!started){play(cur);return}paused=!paused;ui()});
+document.addEventListener("keydown",function(e){if(e.key==="ArrowRight")play(cur+1);else if(e.key==="ArrowLeft")play(cur-1);else if(e.key===" "&&e.target===document.body){e.preventDefault();paused=!paused;ui()}});
+
+/* poster frame, then autoplay (reduced motion starts paused) */
+ui();wheelShow(400,350);setActive(1);showPanel(folders(8,8,{h:62}));cpos(wc.x+Math.sin(Math.PI/4)*R*.72,wc.y-Math.cos(Math.PI/4)*R*.72);
+if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches){paused=true;ui()}
+else setTimeout(function(){play(0)},1400);
+})();
+</script>
+</body>
+</html>
