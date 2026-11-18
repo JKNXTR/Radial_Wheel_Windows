@@ -1,7 +1,5 @@
 # Radial Wheel
-<div align="center">
-  <a href="[https://tvoeto-ime.github.io/imeto-na-repo/](https://sites.google.com/view/radial-wheel-demo/home)" style="background-color: #0366d6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold;">DEMO</a>
-</div>
+Demo link -> https://sites.google.com/view/radial-wheel-demo/home
 **A radial quick-access menu for Windows.** Press a global hotkey and an 8-sector wheel opens around your cursor. Hover a sector to open a panel above it with keyboard shortcuts, folders, programs, favorites, Windows commands, sound controls, web search and settings.
 
 Written in Python with PySide6. It runs quietly from the system tray, starts with Windows and installs without a console window or administrator rights.
