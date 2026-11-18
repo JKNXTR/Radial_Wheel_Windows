@@ -1,4 +1,7 @@
 # Radial Wheel
+<div align="center">
+  <img src="images/logo.png" alt="Radial_Wheel_Windows" width="600">
+</div>
 Demo link -> https://sites.google.com/view/radial-wheel-demo/home
 **A radial quick-access menu for Windows.** Press a global hotkey and an 8-sector wheel opens around your cursor. Hover a sector to open a panel above it with keyboard shortcuts, folders, programs, favorites, Windows commands, sound controls, web search and settings.
 
