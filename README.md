@@ -1,28 +1,136 @@
-Radial Wheel – Radial Quick-Access and System Management Menu (Windows)An 8-sector radial launcher that appears around the cursor via a global hotkey (default Ctrl+Alt+Space) and opens a contextual panel above the wheel: quick keyboard shortcuts, virtual keyboard, folders, programs, Windows commands, Google search, volume and audio output switching, and settings.
-Implements the specification from docs/SPEC_bg.txt and the visual design from docs/mockups/.Installation (Graphical, One-Time, No Console, and No Administrator Rights)Extract the entire ZIP archive (if Windows marks the file as downloaded: right-click the ZIP → Properties → Unblock, and only then extract).Double-click install.bat – this opens the installer window with a progress bar (without a black CMD console).The installer will:Locate Python 3.9–3.13 (if missing, it installs Python 3.12 via winget or from python.org, exclusively for your user profile);Copy the application to %LOCALAPPDATA%\RadialWheel, create a venv, and install dependencies;Register startup at every Windows login (HKCU\...\Run, without a console via pythonw);Create a "Radial Wheel" shortcut in the Start menu and an entry in Apps & features;Launch the wheel – an icon (a minimalist wheel) appears in the system tray next to the clock.After installation, there is no need to run anything via the CMD. The application starts automatically upon every Windows login.System Tray Icon (Right-Click Menu)Open Wheel · Settings · Run at Windows Startup · Settings Folder · Log ·
-Close (Hotkey Restarts It) · Exit Completely. Left-clicking the icon displays the wheel.Close stops the application while keeping a tiny background listener running (handling only the hotkey, with no open windows, using just a few megabytes of RAM). Pressing the hotkey combination starts the wheel right back up.Exit Completely shuts down everything (including the listener). The hotkey will not function until the next manual start or Windows login.The listener monitors only the hotkey combination; if you configure a mouse button as a trigger, it will only function while the application is actively running.Installation log: %LOCALAPPDATA%\RadialWheel\install.log. Uninstallation: uninstall.bat or Settings → Apps → Radial Wheel (settings stored in %APPDATA%\RadialWheel can be preserved optionally).For development without installation: run.bat (also running without a console). To build a standalone .exe (optional): run build_exe.bat, then use install.bat to install it without requiring Python.UsageActionResultCtrl+Alt+Space (Global hotkey; or via tray / shortcut)The wheel appears centered on the cursor in a neutral state and remains open (does not require holding down). Near screen edges, its position is automatically adjusted (Screen Bounds Clamp)Hovering over a sectorThe sector turns blue, and its panel appears above the wheel; moving to another sector switches the panel instantlyClicking the active sector (Click-to-Pin)The panel pins – it stays open even if the cursor leaves the sector, allowing you to interact with buttons, sliders, and fields inside itX (top right of the panel) or clicking outside the panelCloses only the panel; the wheel remains in its base stateSecond click outside the wheel (when no panel is open)Minimizes the entire tool to the system tray (Two-Step Dismiss)Pressing the hotkey againHides the tool immediately (toggle), whether a panel is open or notClicking the red Delete in the center / EscHides the toolClicking a tile / keyExecutes the action, hides the wheel, and restores focus to the previous windowRight-clicking a tile (folders, programs, browsers, favorites, websites)Selects a file, folder, or URL for that slotDropping a file onto a tileAssigns the slot via drag-and-drop (.exe / .lnk / folder)Sectors (clockwise from 12:00; order can be customized via Settings → Layout):
-Keyboard · Folders · Windows Commands · Favorites · Sound · Internet · Settings · Programs.SettingsThe gear sector (or tray → Settings) opens a dialog with 13 pages. Panel Contents: Folders (paths for the 8 tiles), Programs (executable for each slot), Shortcuts (2 rows of 3 combinations with validation), Favorites (8 files/scripts/folders), Internet (browsers, website URLs, bookmarks folder). Appearance & Behavior: View (transparency, size, animation), Layout (drag-and-drop sector rearrangement), Icons (custom .png/.svg/.ico), Functions (hover/click, delays, auto-hide, autostart, language), Themes, Shortcuts (global hotkey or mouse button), Sounds, Reset. Changes are saved immediately and take effect the next time the wheel is opened.Quick Shortcut: In the header of each panel (top left), a gear icon opens the exact corresponding settings page (Keyboard → Shortcuts, Folders → Folders, Programs → Programs, Favorites → Favorites, Internet → Internet, Windows Commands → Functions, Sound → Sounds).All configurations are saved in %APPDATA%\RadialWheel\config.json (easily human-readable for backups and manual editing; e.g., quick_shortcuts handles keyboard panel shortcuts). Full traceback logs: %APPDATA%\RadialWheel\radialwheel.log.
-Language files: app/lang/lang_bg.json, lang_en.json.Project Structureinstall.bat / install.ps1      Automatic installer (+ uninstall.bat/.ps1)
-run.bat, build_exe.bat         Run from source / build .exe
+# Radial Wheel
+
+**A radial quick-access menu for Windows.** Press a global hotkey and an 8-sector wheel opens around your cursor. Hover a sector to open a panel above it with keyboard shortcuts, folders, programs, favorites, Windows commands, sound controls, web search and settings.
+
+Written in Python with PySide6. It runs quietly from the system tray, starts with Windows and installs without a console window or administrator rights.
+
+[Bulgarian README](README_bg.md) · Version 1.2.0 · UI available in 20 languages (English by default)
+
+## Features
+
+- **8-sector wheel** at the cursor, clamped to the screen edges. Sectors, clockwise from 12 o'clock: Keyboard, Folders, Windows commands, Favorites, Sound, Internet, Settings, Programs (order is configurable).
+- **Contextual panels**
+  - *Keyboard:* quick shortcut buttons (add or remove rows and columns), on-screen keyboard, Enter/Space/Backspace and Windows keys.
+  - *Folders, Programs, Favorites:* dynamic slots that hold a folder, a program or a file.
+  - *Windows commands:* Start, Task Manager, Settings, Lock, Sleep, Restart, Shut Down, Run.
+  - *Sound:* volume and default playback device.
+  - *Internet:* browser picker, Google search, saved sites.
+- **Flexible layout:** one row, a fixed number of tiles per row, or a fixed number of rows. Set tile width and height, icon size, text size, panel width and an overall panel scale, with a live preview.
+- **Tile colors:** a color picker with transparency, for a whole panel or for a single slot.
+- **Center Delete button:** turns red when you move the cursor onto it and sends a real Delete key press to the window you were using.
+- **Tray icon** with a menu: open the wheel, settings, autostart, settings folder, log, **Close** (the hotkey starts it again) and **Exit completely**.
+- **Update from a ZIP:** choose or drop an archive in Settings → Update, confirm, and the app replaces its files and restarts. The previous version is kept as a backup.
+- **Themes, opacity, scale, custom sector icons, sounds** and 15 settings pages in total.
+
+## Install
+
+No console, no administrator rights.
+
+1. Extract the **whole** ZIP. If Windows marked it as downloaded, right-click the ZIP → Properties → *Unblock* first.
+2. Double-click **`install.bat`**. A small installer window shows progress.
+
+The installer:
+
+- finds Python 3.9–3.13, or installs Python 3.12 for your user through `winget` or python.org;
+- copies the app to `%LOCALAPPDATA%\RadialWheel`, creates a virtual environment and installs the dependencies;
+- registers autostart (`HKCU\...\Run`, using `pythonw`, so no console appears);
+- adds a Start menu shortcut and an Apps & Features entry;
+- starts the wheel and shows its tray icon.
+
+Install log: `%LOCALAPPDATA%\RadialWheel\install.log`. To uninstall, run `uninstall.bat` or use *Settings → Apps → Radial Wheel*. Your settings in `%APPDATA%\RadialWheel` are kept unless you choose to remove them.
+
+To run from source instead: `pip install -r requirements.txt`, then `python app/main.py`, or use `run.bat`.
+
+## Using the wheel
+
+The default hotkey is **Ctrl+Alt+Space**. You can change it in Settings → Hotkeys, and you can also use a mouse button as the trigger.
+
+| Action | Result |
+|---|---|
+| Press the hotkey | The wheel opens centered on the cursor and stays open, with no need to hold the key. Near a screen edge its position is corrected. |
+| Hover a sector | The sector turns blue and its panel opens above the wheel. Moving to another sector switches the panel. |
+| Click the active sector | The panel is **pinned**. It stays open while you use its buttons, sliders and fields. |
+| **X** on a panel, or click outside it | Closes only the panel. |
+| Second click outside the wheel | Hides everything. |
+| Press the hotkey again | Toggles the wheel off immediately. |
+| Center **Delete** button / **Esc** | Delete sends the Delete key to the previous window. Esc hides the wheel. |
+| Click a tile or key | The action runs, the wheel hides and focus returns to the previous window. |
+| Right-click a tile | Choose a file, folder or URL for that slot, restore the default, or remove the slot. |
+| Drop a file onto a tile | Sets the slot (.exe, .lnk, file or folder). |
+
+The gear icon in each panel header opens the matching Settings page.
+
+### Tray menu
+
+Left-click the tray icon to show the wheel; right-click for the menu.
+
+- **Close** stops the app but leaves a tiny background listener that only watches the hotkey. Press the hotkey and the app starts again.
+- **Exit completely** stops everything, including the listener. The hotkey stays silent until the next start or sign-in.
+- If you use a mouse button as the trigger, it works only while the app is running.
+
+## Settings
+
+Open them from the Settings sector, the tray menu or any panel's gear icon. Changes are saved immediately.
+
+View · Layout · Icons · Folders · Programs · Shortcuts · Favorites · Internet · Size and grid · Functions · Themes · Hotkeys · Sounds · Update · Reset
+
+Everything is stored in `%APPDATA%\RadialWheel\config.json`, which is plain JSON and easy to back up or edit. Logs with full tracebacks are in `%APPDATA%\RadialWheel\radialwheel.log`.
+
+### Languages
+
+English (default), Bulgarian, German, French, Spanish, Italian, Portuguese, Dutch, Polish, Czech, Romanian, Greek, Turkish, Russian, Ukrainian, Swedish, Hungarian, Japanese, Chinese (Simplified) and Korean. Choose one in Settings → Functions; it applies after a restart. Texts missing from a translation fall back to English. To add a language, create `app/lang/lang_<code>.json` and add it to `LANGUAGES` in `app/radialwheel/i18n.py`.
+
+## Updating
+
+Settings → Update: choose a `.zip` of a newer version or drag it onto the page. The app checks that it is a valid Radial Wheel archive, shows the current and new versions and asks for confirmation. It then closes, replaces the `app` folder, keeps the old one as `app.bak`, restores it automatically if something fails, and starts again. Your configuration is not touched. The log is `%APPDATA%\RadialWheel\update.log`.
+
+If a new version needs new Python libraries, run `install.bat` from the new archive. Updating is not supported for the PyInstaller `.exe` build.
+
+## Project layout
+
+```
+install.bat / install.ps1      GUI installer (+ uninstall.bat / uninstall.ps1)
+run.bat, build_exe.bat         run from source / build an .exe with PyInstaller
 requirements*.txt
 app/
-  main.py                      Entry point (--autostart, --show; single instance)
-  lang/                        lang_bg.json, lang_en.json
-  assets/icons/*.svg           All icons (61 pcs), app.ico, app.png, sounds/tick.wav
+  main.py                      entry point (--autostart, --show, --listener; single instance)
+  lang/                        lang_<code>.json for 20 languages
+  assets/icons/*.svg           generated icons, app.ico, app.png, sounds/tick.wav
   radialwheel/
-    wheel.py                   Wheel: geometry, atan2/hypot hit-testing, hover/click states, Delete button
-    overlay.py                 Window: positioning, showing/hiding, panel switching, focus
-    panels.py, widgets.py      8 sector panels, tiles, keycaps, frames
-    actions.py                 SendInput keys, launching, folders, system commands, path selection
-    winapi.py                  Win32 (SendInput, RegisterHotKey, low-level mouse hook, focus) via ctypes
-    audio.py                   Core Audio: IAudioEndpointVolume, audio outputs, IPolicyConfig
-    triggers.py, autostart.py  Global hotkey/mouse; HKCU Run
-    lifecycle.py, listener.py  Hotkey-listening shutdown (no Qt) / restart
-    settings_dialog.py, app.py Settings; tray, controller
+    wheel.py                   wheel geometry, atan2/hypot hit-testing, hover/click states, Delete button
+    overlay.py                 window: placement, show/hide, panel switching, focus, sizing
+    panels.py, widgets.py      the panels, tiles, keycaps, frames
+    layout.py                  grid layout for tiles (rows, columns, sizes)
+    actions.py                 SendInput keys, launching, folders, system commands, path pickers
+    winapi.py                  Win32 through ctypes (SendInput, RegisterHotKey, mouse hook, focus)
+    audio.py                   Core Audio: volume, playback devices, IPolicyConfig
+    triggers.py, autostart.py  global hotkey / mouse trigger; HKCU Run
+    lifecycle.py, listener.py  close-with-listener (no Qt) and relaunch
+    updater.py                 update from a ZIP archive
+    settings_dialog.py, app.py settings, tray, controller
     config.py, i18n.py, theme.py, icons.py, paths.py
 tools/
-  gen_assets.py                Generates all icons/ico/sound
-  render_states.py             Headless rendering of all states (mockup comparison)
-  smoke_test.py                Headless logic tests
-docs/                          SPEC_bg.txt, mockups/, renders/ (real code screenshots)
-Notes and Known LimitationsFn (the right-side keyboard panel) is a hardware laptop key without a Windows virtual key code – it cannot be simulated via SendInput; the button serves as an indicator only.The "Windows Commands" icon is a custom illustration of four colored panels (not the official logo); it can be replaced via Settings → Icons.Browser icons are neutral; if a browser is installed, the tile displays its system icon.Selecting a middle or side mouse button as a trigger intercepts it globally (it will not function in other programs normally) – by default, the trigger is strictly a keyboard shortcut.Audio output switching relies on the undocumented but widely used COM interface IPolicyConfig; check radialwheel.log in case of issues.Sleep mode invokes SetSuspendState(0,0,0); if hibernation is enabled on the machine, some configurations prioritize it over sleep.Dynamic Slots, Grid, and DimensionsSettings → Folders / Programs / Favorites: A "+ Add Slot" button creates a new blank slot; each slot features a name, path, file/folder picker, ▲▼ reordering buttons, and an ✕ to remove it. In the panel: clicking an empty slot prompts for a file/folder; right-click → "Remove slot"; or you can drag and drop a file directly onto a tile.Settings → Size & Grid: Visual layout customizer with live preview. For each panel: all items in a single row, a fixed number of tiles per row or rows count; tile width/height, icon and text size, panel width (0 = auto), and a master size slider for all panels.Center Delete Button: Now sends a genuine Delete keystroke to the previous window (the wheel hides automatically).Note: Windows-specific features have not been tested on a physical Windows device.Updating (Settings → Update)Select or drop a .zip archive containing the new version. The tool validates the archive, displays current and new versions, and prompts for confirmation. Upon confirming "Yes," the application shuts down, the app folder is replaced (the old one is saved as app.bak, and automatically restored if an error occurs), and the tool restarts automatically. Configuration files in %APPDATA%\RadialWheel are preserved. Log: %APPDATA%\RadialWheel\update.log. If the new version requires new libraries, run install.bat from the archive.Tile Colors and Quick ShortcutsTile Background: Settings → Size & Grid → "Tile Background" (global for the panel) and a color button next to each individual slot in Folders / Programs / Favorites (for specific tiles). Colors are selected via a color picker with an opacity slider; ✕ reverts to the theme color.Quick Shortcuts: Settings → Shortcuts – buttons for "+/− Row" and "+/− Column" (up to 6 columns). Empty cells mean no shortcut assigned. The panel displays all configured rows.Center Delete Button: Turns red the moment the cursor moves over it (not just after leaving the center circle).Languages (v1.2.0)English is the default language. Settings → Functions provides a choice among 20 languages (including Bulgarian). Core wheel, panel, and tray texts are translated; more detailed setting descriptions may fall back to English in some languages. New languages: add lang_<code>.json and an entry in LANGUAGES (i18n.py). See also README_en.md.
+  gen_assets.py                generates icons, .ico and sound
+  make_langs.py                generates the extra language files
+  render_states.py             headless screenshots of all states
+  smoke_test.py                headless logic tests
+docs/                          original spec, mockups, renders
+```
+
+## Development
+
+```
+python tools/gen_assets.py     # regenerate icons
+python tools/smoke_test.py     # headless tests (set QT_QPA_PLATFORM=offscreen on Linux)
+python tools/render_states.py  # screenshots of every state
+```
+
+## Known limitations
+
+- Developed and tested headlessly. The Windows-specific parts (global hotkey, SendInput, audio switching, installer, autostart, updater restart) should be checked on your own machine. Please report problems with the contents of `radialwheel.log`.
+- **Fn** is a hardware key on laptops and has no Windows key code, so it cannot be sent with `SendInput`. The Fn button is only a visual indicator.
+- The "Windows commands" icon is an original four-pane illustration, not the official logo. It can be replaced in Settings → Icons.
+- If you choose the middle or a side mouse button as the trigger, it is captured globally and stops working in other programs. The default trigger is the keyboard hotkey only.
+- Switching the audio output uses the undocumented but widely used `IPolicyConfig` COM interface.
+- Sleep uses `SetSuspendState(0,0,0)`. If hibernation is enabled, some systems prefer hibernation over sleep.
+- Non-Bulgarian, non-English translations cover the wheel, panels and tray. Longer Settings texts fall back to English, and the translations have not been reviewed by native speakers.
