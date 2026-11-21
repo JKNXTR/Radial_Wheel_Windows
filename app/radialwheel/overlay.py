@@ -7,7 +7,7 @@ from contextlib import contextmanager
 
 from PySide6.QtCore import QEasingCurve, QPoint, QPropertyAnimation, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QGuiApplication
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
 
 from . import icons, winapi
 from .actions import Actions
@@ -75,6 +75,10 @@ class Overlay(QWidget):
         self.zone = QWidget(self)
         self.zone.setAttribute(Qt.WA_TranslucentBackground)
         self._modal = 0
+        self._tuck = 0.0              # 0..1: колелото се скрива под разгънатата клавиатура
+        self._wheel_home = QPoint()
+        self._tuck_dy = 0
+        self._typing = False          # екранната клавиатура пише в друг прозорец: фокусът извън нас е нормален
         self.pinned = False
         self.catcher = Catcher(self.outside_click)
         self._prev_hwnd = 0
@@ -167,6 +171,9 @@ class Overlay(QWidget):
         self.setFixedSize(m["W"], m["H"])
         self.zone.setGeometry(m["margin"], m["margin"], self.zone_w, self.zone_h)
         self.wheel.move(m["wx"], m["wy"])
+        self._wheel_home = QPoint(m["wx"], m["wy"])
+        self._tuck_dy = int(self.wheel.height() * 0.65 + m["gap"])
+        self._tuck = 0.0
         self.wheel.show()
         from .zoomlayer import ZoomLayer
         self.zoom_layer = ZoomLayer(self.wheel, self)
@@ -222,6 +229,7 @@ class Overlay(QWidget):
             self._anim.start()
         self._shown_at = time.monotonic()
         self._left_at = None
+        self._typing = False
         self._watch.start()
 
     def close_menu(self, restore=True):
@@ -238,6 +246,7 @@ class Overlay(QWidget):
 
     # ------------------------------------------------------------ панели
     def _clear_panel(self):
+        self.set_tuck(0.0)
         if self.panel is not None:
             self.panel.hide()
             self.panel.deleteLater()
@@ -245,6 +254,7 @@ class Overlay(QWidget):
         self.panel_sid = None
         self.focus_widget = None
         self.pinned = False
+        self._typing = False
 
     def show_panel(self, sid):
         if sid == self.panel_sid and self.panel is not None:
@@ -299,6 +309,35 @@ class Overlay(QWidget):
             self.pinned = True
             self.wheel.locked = True
 
+    def set_tuck(self, t):
+        """Колелото се плъзга нагоре и избледнява под панела (t=0 – на мястото си, t=1 – скрито)."""
+        w, zl = self.wheel, getattr(self, "zoom_layer", None)
+        if w is None:
+            return
+        t = max(0.0, min(1.0, float(t)))
+        if t == self._tuck:
+            return
+        self._tuck = t
+        w.move(self._wheel_home.x(), self._wheel_home.y() - int(self._tuck_dy * t))
+        op = 1.0 - min(1.0, t * 1.25)
+        for x in (w, zl):
+            if x is None:
+                continue
+            if t <= 0.001:
+                if x.graphicsEffect() is not None:
+                    x.setGraphicsEffect(None)
+            else:
+                eff = x.graphicsEffect()
+                if eff is None:
+                    eff = QGraphicsOpacityEffect(x)
+                    x.setGraphicsEffect(eff)
+                eff.setOpacity(op)
+        w.setAttribute(Qt.WA_TransparentForMouseEvents, t > 0.02)
+        if t > 0:
+            self.zone.raise_()                    # панелът е над колелото, за да го закрива
+        if zl is not None:
+            zl.update()
+
     def close_panel(self):
         """Затваря само горния панел; колелото остава в изходно състояние."""
         self._clear_panel()
@@ -324,12 +363,15 @@ class Overlay(QWidget):
 
     # ------------------------------------------------------------ автоматично скриване
     def _on_app_state(self, state):
-        if (state != Qt.ApplicationActive and self.isVisible() and self._modal == 0
+        if (state != Qt.ApplicationActive and self.isVisible() and self._modal == 0 and not self._typing
                 and time.monotonic() - self._shown_at > 0.4 and not winapi.IS_WIN):      # под Windows това прави _watchdog
             self.close_menu(False)
 
     def _watchdog(self):
         if self._modal or time.monotonic() - self._shown_at < 0.6:
+            return
+        if self._typing:             # докато се пише с екранната клавиатура, колелото остава; затваря се с клик извън него
+            self._left_at = None
             return
         # Windows: фокусът е преминал към друг процес (клик извън колелото, Alt+Tab …)
         if winapi.IS_WIN:

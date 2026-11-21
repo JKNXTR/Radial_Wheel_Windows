@@ -231,5 +231,6 @@
   "anim.dim_amount": "Степен на избледняване",
   "anim.center_glow": "Централен бутон: плавно червено светене при посочване",
   "anim.center_boost": "Централен бутон: по-ярко червено и леко увеличение при задържане",
-  "center.backspace": "Backspace"
+  "center.backspace": "Backspace",
+  "tip.lang": "Смяна на езика на въвеждане"
 }

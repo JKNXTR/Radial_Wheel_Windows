@@ -1,12 +1,5 @@
-
 # Radial Wheel
-<div align="center">
-  <img src="images/logo.png" alt="Radial_Wheel_Windows" width="1920">
-</div>
-Demo link -> https://sites.google.com/view/radial-wheel-demo/home
 
-If you like my idea and want to support me a coffee will be amazing so i can keep stay later at night ;) -> https://buymeacoffee.com/nextarbgm
-**A radial quick-access menu for Windows.** Press a global hotkey and an 8-sector wheel opens around your cursor. Hover a sector to open a panel above it with keyboard shortcuts, folders, programs, favorites, Windows commands, sound controls, web search and settings.
 **A radial quick-access menu for Windows.** Press a global hotkey and an 8-sector wheel opens around your cursor. Hover a sector to open a panel above it with keyboard shortcuts, folders, programs, favorites, Windows commands, sound controls, web search and settings.
 
 Written in Python with PySide6. It runs quietly from the system tray, starts with Windows and installs without a console window or administrator rights.
@@ -155,3 +148,5 @@ The app watches its own user interface. If it stops responding for more than 2.5
 - Sector zoom (1.3.5): the selected sector smoothly grows 2x; the previous one returns to its original size and position.
 - Animation settings (1.4.0): new Settings → Animation page (master switch, speed, zoom per sector, push away from center, fade other sectors, smooth red glow of the Delete center button that gets brighter and slightly larger while held).
 - Center button (1.4.1): shows Backspace first; while holding, the label cross-fades to Delete (localized).
+- On-screen keyboard (1.4.2): while typing with the keyboard panel, the wheel no longer closes when focus returns to the target window; a click outside still dismisses it.
+- Keyboard (1.4.3): while a panel is expanded the wheel slides up and fades under it, returning when it collapses; the panel title bar drags the whole menu; new language key (Win+Space) refreshes the letters.

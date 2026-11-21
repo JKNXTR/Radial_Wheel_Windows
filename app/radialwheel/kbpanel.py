@@ -7,7 +7,7 @@
 import logging
 
 from PySide6.QtCore import QEasingCurve, QEvent, QObject, QRectF, QTimer, Qt, QVariantAnimation
-from PySide6.QtGui import QColor, QCursor, QPainter, QPen
+from PySide6.QtGui import QColor, QCursor, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QGridLayout, QHBoxLayout, QVBoxLayout, QWidget
 
 from . import winapi
@@ -27,8 +27,8 @@ def _rows():
     r2 = [(("x", "tab", 0x09), 1.5)] + [(("k", ord(c)), 1) for c in "QWERTYUIOP"] + [(("k", 0xDB), 1), (("k", 0xDD), 1), (("k", 0xDC), 1.5)]
     r3 = [(("x", "caps", 0x14), 1.75)] + [(("k", ord(c)), 1) for c in "ASDFGHJKL"] + [(("k", 0xBA), 1), (("k", 0xDE), 1), (("x", "enter", 0x0D), 2.25)]
     r4 = [(("m", "shift", 0xA0), 2.25)] + [(("k", ord(c)), 1) for c in "ZXCVBNM"] + [(("k", 0xBC), 1), (("k", 0xBE), 1), (("k", 0xBF), 1), (("m", "shift", 0xA1), 2.75)]
-    r5 = [(("m", "ctrl", 0xA2), 1.25), (("m", "win", 0x5B), 1.25), (("m", "alt", 0xA4), 1.25), (("x", "space", 0x20), 6.25),
-          (("m", "alt", 0xA5), 1.25), (("m", "ctrl", 0xA3), 1.25), (("x", "left", 0x25), 1.25), (("x", "right", 0x27), 1.25)]
+    r5 = [(("m", "ctrl", 0xA2), 1.25), (("m", "win", 0x5B), 1.25), (("m", "alt", 0xA4), 1.25), (("x", "space", 0x20), 5.25),
+          (("m", "alt", 0xA5), 1.25), (("m", "ctrl", 0xA3), 1.25), (("l", "lang", 0), 1.0), (("x", "left", 0x25), 1.25), (("x", "right", 0x27), 1.25)]
     return [r1, r2, r3, r4, r5]
 
 
@@ -124,6 +124,10 @@ class KeyboardPanel(QWidget):
         self._watch.setInterval(120)
         self._watch.timeout.connect(self._check_leave)
         self._outside = 0
+        self._drag = None                      # (глобална позиция при натискане, позиция на прозореца) при влачене на панела
+        self._lang_timer = QTimer(self)
+        self._lang_timer.setSingleShot(True)
+        self._lang_timer.timeout.connect(self._refresh_labels)
         self.latched = {}
         for i, f in enumerate(self.frames):
             self._place_compact(i)
@@ -289,18 +293,28 @@ class KeyboardPanel(QWidget):
                 kind = spec[0]
                 if kind == "k":
                     vk = spec[1]
-                    base, shifted = labels.get(vk, ("?", "?"))
-                    token, sub = base.upper() if len(base) == 1 and base.isalpha() else base, (shifted if not base.isalpha() else "")
+                    token, sub = self._key_text(*labels.get(vk, ("?", "?")))
+                elif kind == "l":
+                    token, vk, sub = lang, 0, ""
                 elif kind in ("x", "m"):
                     token, vk, sub = spec[1], spec[2], ""
                 key = OskKey(th, s, token, sub, vk, kind, self._osk_click)
                 key.setParent(w)
+                if kind == "l":
+                    key.setToolTip(tr("tip.lang"))
                 key.setGeometry(int(x * u + gap / 2), int(r * uh + gap / 2), int(wu * u - gap), int(uh - gap))
                 key.show()
                 self.osk_keys.append(key)
                 x += wu
 
+    @staticmethod
+    def _key_text(base, shifted):
+        return (base.upper() if len(base) == 1 and base.isalpha() else base), (shifted if not base.isalpha() else "")
+
     def _osk_click(self, key):
+        if key.kind == "l":
+            self._switch_lang()
+            return
         if key.kind == "m":
             key.latched = not key.latched
             key.update()
@@ -311,6 +325,27 @@ class KeyboardPanel(QWidget):
             if k.kind == "m" and k.latched:
                 k.latched = False
                 k.update()
+
+    def _switch_lang(self):
+        """Смяна на входния език на прозореца, в който се пише (Win+Space), и опресняване на буквите."""
+        self.ctx.act.type_keys([0x5B, 0x20])
+        self._lang_timer.start(450)
+
+    def _refresh_labels(self):
+        if not self._built[1]:
+            return
+        prev = getattr(self.ctx.overlay, "_prev_hwnd", 0)
+        lang, labels = winapi.keyboard_labels(prev)
+        self.frames[1].title = f"{tr('panel.std_keyboard')} · {lang}"
+        self.frames[1].update()
+        for k in self.osk_keys:
+            if k.kind == "k":
+                k.token, k.sub = self._key_text(*labels.get(k.vk, ("?", "?")))
+            elif k.kind == "l":
+                k.token = lang
+            else:
+                continue
+            k.update()
 
     # ------------------------------------------------------------ анимация
     @staticmethod
@@ -345,7 +380,51 @@ class KeyboardPanel(QWidget):
             self._no_effect(self.compact[k])
             self._no_effect(self.big[k])
 
+    def _tuck(self, t):
+        """Колелото се плъзга нагоре и избледнява „под“ клавиатурата, докато тя е разгъната."""
+        try:
+            self.ctx.overlay.set_tuck(t)
+        except Exception:
+            log.exception("set_tuck неуспешно")
+
+    def _hdr_hit(self, f, pos):
+        sh = f.shadow
+        if not (sh <= pos.y() <= sh + f.header_h):
+            return False
+        if f.has_close and f._x_rect().contains(pos):
+            return False
+        return not (f.has_gear and f._g_rect().contains(pos))
+
+    def _drag_to(self, g):
+        ov = self.ctx.overlay
+        g0, p0 = self._drag
+        scr = QGuiApplication.screenAt(g) or QGuiApplication.primaryScreen()
+        geo = scr.availableGeometry()
+        x = min(max(p0.x() + g.x() - g0.x(), geo.left()), max(geo.left(), geo.right() - ov.width() + 1))
+        y = min(max(p0.y() + g.y() - g0.y(), geo.top()), max(geo.top(), geo.bottom() - ov.height() + 1))
+        ov.move(x, y)
+
+    def _drag_event(self, obj, ev):
+        t = ev.type()
+        if t == QEvent.MouseButtonPress and ev.button() == Qt.LeftButton and self._hdr_hit(obj, ev.position()):
+            ov = self.ctx.overlay
+            self._drag = (ev.globalPosition().toPoint(), ov.pos())
+            ov._typing = True                       # докато се мести, колелото не се затваря
+            obj.setCursor(Qt.SizeAllCursor)
+            return True
+        if t == QEvent.MouseMove:
+            if self._drag is not None:
+                self._drag_to(ev.globalPosition().toPoint())
+                return True
+            obj.setCursor(Qt.SizeAllCursor if self._hdr_hit(obj, ev.position()) else Qt.ArrowCursor)
+        elif t == QEvent.MouseButtonRelease and self._drag is not None:
+            self._drag = None
+            return True
+        return False
+
     def eventFilter(self, obj, ev):
+        if obj in self.frames and self._drag_event(obj, ev):
+            return True
         if ev.type() == QEvent.Enter and obj in self.frames:
             i = self.frames.index(obj)
             if i != self.cur or self.t < 0.99:
@@ -393,6 +472,7 @@ class KeyboardPanel(QWidget):
     def _apply(self, t):
         t = float(t)
         self.t = t
+        self._tuck(t)
         i = self.cur
         if i < 0:
             return
@@ -416,8 +496,12 @@ class KeyboardPanel(QWidget):
                 f.setAttribute(Qt.WA_TransparentForMouseEvents, False)
             self._clear_effects()
             self.cur = -1
+            self._tuck(0.0)
 
     def _check_leave(self):
+        if self._drag is not None:
+            self._outside = 0
+            return
         inside = self.rect().contains(self.mapFromGlobal(QCursor.pos()))
         self._outside = 0 if inside else self._outside + 1
         if self._outside >= 2 and self.t > 0 and self.anim.endValue() != 0.0:

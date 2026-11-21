@@ -13,7 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["APPDATA"] = tempfile.mkdtemp()
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "app"))
 
-from PySide6.QtCore import QPointF, Qt              # noqa: E402
+from PySide6.QtCore import QPoint, QPointF, Qt              # noqa: E402
 from PySide6.QtWidgets import QApplication          # noqa: E402
 
 from radialwheel import actions, winapi             # noqa: E402
@@ -359,6 +359,13 @@ def main():
     pm = ov.grab()
     check("overlay се рисува със слоя без грешки", not pm.isNull())
 
+    # 7n2. писане с екранната клавиатура не затваря колелото
+    ov.show(); ov._typing = True; ov._shown_at -= 5
+    ov._watchdog()
+    check("докато се пише, watchdog не затваря колелото", ov.isVisible())
+    ov._clear_panel()
+    check("затварянето на панела сваля флага за писане", ov._typing is False)
+
     # 7o. настройки „Анимация“, плавно червено на центъра, затъмняване, отдалечаване
     from radialwheel import settings_dialog as _sd
     check("страница „Анимация“ е в менюто", "animation" in _sd.PAGES)
@@ -448,7 +455,7 @@ def main():
         app.processEvents(); _t3.sleep(0.01)
     check("посочване разгъва панела (t=1)", kb.cur == 1 and kb.t > 0.99, f"{kb.cur} {kb.t}")
     keys = kb.findChildren(OskKey)
-    check("компактна клавиатура: 61 клавиша", len(keys) == 61, str(len(keys)))
+    check("компактна клавиатура: 62 клавиша (с бутон за език)", len(keys) == 62, str(len(keys)))
     kk = [k for k in keys if k.vk == 0x41][0]
     check("клавишите са приблизително квадратни", abs(kk.width() - kk.height()) <= 4, f"{kk.width()}x{kk.height()}")
     sentk = []
@@ -458,11 +465,37 @@ def main():
     sh.on_click(sh)
     kk.on_click(kk)
     check("клавиш A и Shift+A (залепващ Shift)", sentk == [[0x41], [0xA0, 0x41]], str(sentk))
+    # колелото се скрива под разгънатата клавиатура
+    hy = ov._wheel_home.y()
+    check("колелото е плъзнато нагоре и изчезнало при разгъване", ov._tuck > 0.99 and ov.wheel.y() < hy - 50
+          and ov.wheel.graphicsEffect().opacity() < 0.01, f"{ov._tuck} {ov.wheel.y()} {hy}")
+    check("колелото не хваща мишката, докато е скрито", ov.wheel.testAttribute(Qt.WA_TransparentForMouseEvents))
+    # влачене на панела
+    ov.move(60, 60)
+    p0 = ov.pos()
+    kb._drag = (QPoint(500, 500), p0)
+    kb._drag_to(QPoint(530, 520))
+    check("влаченето мести прозореца (в границите на екрана)", ov.pos().y() == p0.y() + 20 and ov.pos().x() >= 0, f"{p0} -> {ov.pos()}")
+    ov.move(p0)
+    kb._drag = None
+    # бутон за език
+    lg = [k for k in keys if k.kind == "l"][0]
+    check("има бутон за език с код", lg.token == "EN", lg.token)
+    sentk.clear()
+    lg.on_click(lg)
+    check("бутонът за език праща Win+Space", sentk == [[0x5B, 0x20]], str(sentk))
+    _old_kl = _kbm.winapi.keyboard_labels
+    _kbm.winapi.keyboard_labels = lambda h=0: ("BG", {0x41: ("ф", "Ф")})
+    kb._refresh_labels()
+    check("след смяна на езика буквите и кодът се обновяват", lg.token == "BG" and kk.token == "Ф", f"{lg.token} {kk.token}")
+    _kbm.winapi.keyboard_labels = _old_kl
     kb.collapse()
     t0 = _t3.time()
     while _t3.time() - t0 < 0.8:
         app.processEvents(); _t3.sleep(0.01)
     check("свиване връща компактния вид", kb.cur == -1 and kb.t == 0.0)
+    check("колелото се връща на мястото си и става видимо", ov._tuck == 0.0 and ov.wheel.y() == hy
+          and ov.wheel.graphicsEffect() is None and not ov.wheel.testAttribute(Qt.WA_TransparentForMouseEvents))
 
     # 7d. обновяване от zip
     import tempfile, zipfile, shutil as _sh

@@ -99,6 +99,7 @@ class Actions:
         """Въвеждане от екранната клавиатура: праща клавиша към предишния прозорец, без да затваря колелото."""
         ov = self.overlay
         prev = getattr(ov, "_prev_hwnd", 0)
+        ov._typing = True
 
         def send():
             self._safe(lambda: winapi.send_keys(list(vks)))

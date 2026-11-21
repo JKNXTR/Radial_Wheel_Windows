@@ -231,5 +231,6 @@
   "anim.dim_amount": "Fade amount",
   "anim.center_glow": "Center button: smooth red glow on hover",
   "anim.center_boost": "Center button: brighter red and slight growth while holding",
-  "center.backspace": "Backspace"
+  "center.backspace": "Backspace",
+  "tip.lang": "Switch input language"
 }
